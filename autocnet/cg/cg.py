@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import ogr
 
 from scipy.spatial import ConvexHull
 from scipy.spatial import Voronoi
@@ -106,7 +107,7 @@ def get_area(poly1, poly2):
     return intersection_area
 
 
-def vor(edge, clean_keys=[], s=30):
+def vor(graph, clean_keys=[], s=30):
         """
         Creates a voronoi diagram for an edge using either the coordinate
         transformation or using the homography between source and destination.
@@ -143,63 +144,55 @@ def vor(edge, clean_keys=[], s=30):
                      3 column pandas dataframe of x, y, and weights
 
         """
-        source_corners = edge.source.geodata.xy_corners
-        destination_corners = edge.destination.geodata.xy_corners
+        num_neighbors = len(graph.nodes()) - 1
+        for n in graph.nodes():
+            neighbors = len(graph.neighbors(n))
+            if neighbors != num_neighbors:
+                raise AssertionError('The graph is not complete')
 
-        matches, _ = edge.clean(clean_keys=clean_keys)
+        source = graph.edges(0)[0]
+        destination = graph.edges()[0][1]
+        edge = graph.edge[source][destination]
+        matches, _ = edge.clean(clean_keys=['fundamental'])
+        kps = edge.source.get_keypoint_coordinates(index=matches['source_idx'], homogeneous=True)
 
-        source_keypoints_pd = edge.source.get_keypoint_coordinates(index=matches['source_idx'],
-                                                                   homogeneous=True)
-        destination_keypoints_pd = edge.destination.get_keypoint_coordinates(index=matches['destination_idx'],
-                                                                             homogeneous=True)
-
-        if edge.source.geodata.coordinate_transformation.this is not None:
-            source_footprint_poly = edge.source.geodata.footprint
-            destination_footprint_poly = edge.destination.geodata.footprint
-
-            intersection_poly = destination_footprint_poly.Intersection(source_footprint_poly)
-            intersection_geom = intersection_poly.GetGeometryRef(0)
-            intersect_points = intersection_geom.GetPoints()
-
-            intersection_points = [edge.source.geodata.latlon_to_pixel(lat, lon) for lat, lon in intersect_points]
-
-        else:
-            H, mask = cv2.findHomography(destination_keypoints_pd.values,
-                                         source_keypoints_pd.values,
-                                         cv2.RANSAC,
-                                         2.0)
-
-            proj_corners = []
-            for c in destination_corners:
-                x, y, h = utils.reproj_corner(H, c)
-                x /= h
-                y /= h
-                h /= h
-                proj_corners.append((x, y))
-
-            orig_poly = utils.array_to_poly(source_corners)
-            proj_poly = utils.array_to_poly(proj_corners)
-
-            intersection_poly = orig_poly.Intersection(proj_poly)
-            intersection_geom = intersection_poly.GetGeometryRef(0)
-            intersection_points = intersection_geom.GetPoints()
+        intersection_poly = compute_intersection(graph, clean_keys)
+        intersection_points = intersection_poly.GetGeometryRef(0).GetPoints()
 
         centroid = intersection_poly.Centroid().GetPoint()
 
-        voronoi_df = pd.DataFrame(data=source_keypoints_pd, columns=["x", "y", "vor_weights"])
+        points = np.asarray(kps)
+        voronoi_np = []
 
-        voronoi_df["x"] = source_keypoints_pd['x']
-        voronoi_df["y"] = source_keypoints_pd['y']
-        keypoints = np.asarray(source_keypoints_pd)
+        point_cloud = ogr.Geometry(ogr.wkbMultiPoint)
+        for p in points:
+            point = ogr.Geometry(ogr.wkbPoint)
+            point.AddPoint(double(p[0]), double(p[1]))
+            point_cloud.AddGeometry(point)
 
-        inters = np.empty((len(intersection_points), 2))
+        intersection_cloud = intersection_poly.Intersection(point_cloud)
+
+        for p in intersection_cloud:
+            point = p.GetPoint(0)
+            voronoi_np.append(point)
+
+        keypoints = np.asarray(voronoi_np)
+        voronoi_pd = pd.DataFrame(data=voronoi_np, columns=['x', 'y', 'homogenious'])
+
+        # Based on the keypoints found in the method
+        inters = np.empty((len(intersection_points),2))
+
         for g, (i, j) in enumerate(intersection_points):
             scaledx, scaledy = utils.scale_point((i, j), centroid, s)
             point = np.array([scaledx, scaledy])
             inters[g] = point
 
-        keypoints = np.vstack((keypoints[:, :2], inters))
+        keypoints = np.vstack((keypoints[:,:2], inters))
         vor = Voronoi(keypoints)
+
+        voronoi_df = pd.DataFrame(columns=["x", "y", "weights"])
+        voronoi_df["x"] = kps['x']
+        voronoi_df["y"] = kps['y']
 
         poly_array = []
         for i, region in enumerate(vor.regions):
@@ -216,3 +209,57 @@ def vor(edge, clean_keys=[], s=30):
                                    'vor_weights'] = polygon_area
 
         return vor, voronoi_df
+
+
+def compute_intersection(graph, clean_keys=[]):
+    source_num = graph.edges()[0][0]
+    source = graph.node[source_num]
+    source_corners = source.geodata.xy_corners
+    total_intersect_poly = utils.array_to_poly(source_corners)
+    orig_poly = utils.array_to_poly(source_corners)
+
+    for n in graph.nodes_iter():
+        if n == source_num:
+            continue
+
+        # Define the edge, matches, and destination based on the zero node and the nth node
+        edge = graph.edge[source_num][n]
+        matches, _ = edge.clean(clean_keys=clean_keys)
+        destination = edge.destination
+        destination_corners = destination.geodata.xy_corners
+
+        kp1 = edge.source.get_keypoint_coordinates(index=matches['source_idx'], homogeneous=True)
+        kp2 = edge.destination.get_keypoint_coordinates(index=matches['destination_idx'], homogeneous=True)
+
+        # If the source image has coordinate transformation data, us the footprint and
+        # coordinate transforms as it will produce a more accurate intersection
+        if edge.source.geodata.coordinate_transformation.this is not None:
+            source_footprint_poly = edge.source.geodata.footprint
+            destination_footprint_poly = edge.destination.geodata.footprint
+
+            intersection_poly = destination_footprint_poly.Intersection(source_footprint_poly)
+
+        # Else, use the homography transform to get an intersection of the two images
+        else:
+            H, mask = cv2.findHomography(kp2.values,
+                                         kp1.values,
+                                         cv2.RANSAC,
+                                         2.0)
+
+            proj_corners = []
+            for c in destination_corners:
+                x, y, h = utils.reproj_point(H, c)
+                x /= h
+                y /= h
+                h /= h
+                proj_corners.append((x, y))
+
+            proj_poly = utils.array_to_poly(proj_corners)
+
+            intersection_poly = orig_poly.Intersection(proj_poly)
+
+        # Intersect the newly calculated intersection with the current total intersection
+        # to get the new bound of the overlap area
+        total_intersect_poly = intersection_poly.Intersection(total_intersect_poly)
+
+        return total_intersect_poly

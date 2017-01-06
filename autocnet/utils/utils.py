@@ -335,7 +335,7 @@ def array_to_poly(array):
     return poly
 
 
-def reproj_corner(H, corner):
+def reproj_point(H, corner):
     """
     Reproject a pixel in one image into another image
 
