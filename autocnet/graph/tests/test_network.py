@@ -47,9 +47,9 @@ class TestCandidateGraph(unittest.TestCase):
         self.assertEqual(graph.size(), graph.number_of_edges())
 
         for u, v, e in graph.edges_iter(data=True):
-            e['weight'] = 10
+            e['edge_weight'] = 10
 
-        self.assertEqual(graph.size('weight'), graph.number_of_edges()*10)
+        self.assertEqual(graph.size('edge_weight'), graph.number_of_edges()*10)
 
     def test_island_nodes(self):
         self.assertEqual(len(self.disconnected_graph.island_nodes()), 1)
@@ -159,7 +159,7 @@ class TestCandidateGraph(unittest.TestCase):
         test_sub_graph = graph.create_node_subgraph([0, 1])
         test_sub_graph.extract_features(extractor_parameters={'nfeatures': 500})
         test_sub_graph.match_features(k=2)
-        filtered_nodes = graph.filter_nodes(lambda node: hasattr(node, 'descriptors'))
+        filtered_nodes = graph.filter_nodes(lambda node: hasattr(node, '_descriptors'))
         filtered_edges = graph.filter_edges(edge_func)
 
         self.assertEqual(filtered_nodes.number_of_nodes(), test_sub_graph.number_of_nodes())

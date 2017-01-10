@@ -76,11 +76,29 @@ class Node(dict, MutableMapping):
         """.format(self.node_id, self.image_name, self.image_path,
                    self.nkeypoints, self.masks, self.__class__)
 
+    def __getitem__(self, item):
+        attribute_dict = {'image_name': self.image_name,
+                          'image_path': self.image_path,
+                          'geodata': self.geodata,
+                          'keypoints': self.keypoints,
+                          'nkeypoints': self.nkeypoints,
+                          'descriptors': self.descriptors,
+                          'masks': self.masks,
+                          'isis_serial': self.isis_serial}
+        if item in attribute_dict.keys():
+            return attribute_dict[item]
+        else:
+            return super(Node, self).__getitem__(item)
+
     @property
     def geodata(self):
-        if not getattr(self, '_geodata', None):
+        if not getattr(self, '_geodata', None) and self.image_path is not None:
             self._geodata = GeoDataset(self.image_path)
-        return self._geodata
+            return self._geodata
+        if hasattr(self, '_geodata'):
+            return self._geodata
+        else:
+            return None
 
     @property
     def masks(self):
@@ -126,6 +144,20 @@ class Node(dict, MutableMapping):
             return len(self._keypoints)
         else:
             return 0
+
+    @property
+    def keypoints(self):
+        if hasattr(self, '_keypoints'):
+            return self._keypoints.copy()
+        else:
+            return None
+
+    @property
+    def descriptors(self):
+        if hasattr(self, '_descriptors'):
+            return np.copy(self._descriptors)
+        else:
+            return None
 
     def coverage(self):
         """
@@ -239,7 +271,7 @@ class Node(dict, MutableMapping):
                  kwargs passed to autocnet.feature_extractor.extract_features
 
         """
-        self._keypoints, self.descriptors = fe.extract_features(array, **kwargs)
+        self._keypoints, self._descriptors = fe.extract_features(array, **kwargs)
 
     def load_features(self, in_path):
         """
@@ -256,7 +288,7 @@ class Node(dict, MutableMapping):
         else:
             hdf = in_path
 
-        self.descriptors = hdf['{}/descriptors'.format(self.image_name)][:]
+        self._descriptors = hdf['{}/descriptors'.format(self.image_name)][:]
         raw_kps = hdf['{}/keypoints'.format(self.image_name)][:]
         index = raw_kps['index']
         clean_kps = utils.remove_field_name(raw_kps, 'index')
@@ -298,7 +330,7 @@ class Node(dict, MutableMapping):
 
         try:
             hdf.create_dataset('{}/descriptors'.format(self.image_name),
-                               data=self.descriptors,
+                               data=self._descriptors,
                                compression=io_hdf.DEFAULT_COMPRESSION,
                                compression_opts=io_hdf.DEFAULT_COMPRESSION_VALUE)
             hdf.create_dataset('{}/keypoints'.format(self.image_name),
