@@ -14,8 +14,6 @@ os:
   - linux
   - osx
 
-before_install:
-
 install:
   # We do this conditionally because it saves us some downloading if the
   # version is the same.
@@ -44,6 +42,8 @@ install:
   - conda config --add channels conda-forge
   - conda config --add channels menpo
   - conda config --add channels jlaura
+  - conda config --set ssl_verify false
+  - conda install python=$PYTHON_VERSION
   - conda install -c conda-forge numpy
   - conda install -c jlaura plio opencv3=3.0.0
   - conda install -c conda-forge vlfeat
@@ -52,10 +52,9 @@ install:
   - conda install scipy networkx numexpr dill cython pyyaml matplotlib runipy
 
   # Development installation
-  - conda install nose coverage sh anaconda-client
+  - conda install pytest pytest-cov coverage sh anaconda-client
   - pip install coveralls
   - python runipynbs.py
-
 
     # Straight from the menpo team
   - if [["$TRAVIS_OS_NAME" == "osx"]]; then
@@ -67,7 +66,9 @@ install:
   - python condaci.py setup
 
 script:
-  - nosetests --with-coverage --cover-package=autocnet
+  - pytest --cov=autocnet
+  # clean up any remaining processes...
+  - if [ $TRAVIS_OS_NAME == "linux" ]; then killall5; fi
 
 after_success:
   # Upload to anaconda and push to coveralls
