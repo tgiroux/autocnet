@@ -8,6 +8,7 @@ from scipy.spatial.distance import cdist
 
 from autocnet.utils import utils
 from autocnet.matcher import health
+from autocnet.graph.node import Node
 from autocnet.matcher import outlier_detector as od
 from autocnet.matcher import suppression_funcs as spf
 from autocnet.matcher import subpixel as sp
@@ -797,3 +798,15 @@ class Edge(dict, MutableMapping):
         voronoi = cg.vor(self, clean_keys, **kwargs)
         self.matches = pd.concat([self.matches, voronoi[1]['vor_weights']], axis=1)
 
+    def get_keypoints(self, node, clean_keys, **kwargs):
+        matches, _ = self.clean(clean_keys=clean_keys)
+        if type(node) is str:
+            node = node.lower()
+
+        if type(node) is Node:
+            node = node.node_id
+
+        if node == "source" or node == "s" or node == self.source.node_id:
+            return self.source.get_keypoint_coordinates(index=matches['source_idx'], **kwargs)
+        if node == "destination" or node == "d" or node == self.destination.node_id:
+            return self.destination.get_keypoint_coordinates(index=matches['destination_idx'], **kwargs)
