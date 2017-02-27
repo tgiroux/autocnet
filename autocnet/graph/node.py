@@ -164,20 +164,6 @@ class Node(dict, MutableMapping):
         else:
             return 0
 
-    """    @property
-    def keypoints(self):
-        if hasattr(self, '_keypoints'):
-            return self._keypoints.copy()
-        else:
-            return None
-
-    @property
-    def descriptors(self):
-        if hasattr(self, '_descriptors'):
-            return np.copy(self._descriptors)
-        else:
-            return None"""
-
     def coverage(self):
         """
         Determines the area of keypoint coverage
@@ -249,7 +235,7 @@ class Node(dict, MutableMapping):
         """
         if hasattr(self, '_keypoints'):
             if index is not None:
-                return self._keypoints.loc[index]
+                return self._keypoints.ix[index]
             else:
                 return self._keypoints
 
@@ -277,6 +263,15 @@ class Node(dict, MutableMapping):
             keypoints['homogeneous'] = 1
 
         return keypoints
+
+    def get_raw_keypoint_coordinates(self, index):
+        """
+        The performance of get_keypoint_coordinates can be slow
+        due to the ability for fancier indexing.  This method
+        returns coordinates using numpy array accessors.
+        """
+        index = index.astype(np.int)
+        return self._keypoints.values[index,:2]
 
     @staticmethod
     def _extract_features(*args, **kwargs):
@@ -391,23 +386,28 @@ class Node(dict, MutableMapping):
 
             # Add the point object onto the node
             point = Point(pid)
-
-            covered_edges = list(map(tuple, g[['source_image', 'destination_image']].values))
+            #print(g[['source_image', 'destination_image']])
+            #covered_edges = list(map(tuple, g[['source_image', 'destination_image']].values))
+            s = g['source_image'].iat[0]
+            d = g['destination_image'].iat[0]
             # The reference edge that we are deepening with
-            ab = cg.edge[covered_edges[0][0]][covered_edges[0][1]]
+            ab = cg.edge[s][d]
 
             # Get the coordinates of the search correspondence
-            ab_keypoints = ab.source.get_keypoint_coordinates(index=g['source_idx'])
+            ab_keypoints = ab.source.get_raw_keypoint_coordinates(index=g['source_idx'])
             ab_x = None
-
             for j, (r_idx, r) in enumerate(g.iterrows()):
-                kp = ab_keypoints.iloc[j].values
-
+                if len(g) == 1:
+                    kp = ab_keypoints
+                else:
+                    kp = ab_keypoints[j]
                 # Homogenize the coord used for epipolar projection
                 if ab_x is None:
                     ab_x = np.array([kp[0], kp[1], 1.])
 
-                kpd = ab.destination.get_keypoint_coordinates(index=g['destination_idx']).values[0]
+                kpd = ab.destination.get_raw_keypoint_coordinates(index=g['destination_idx'])
+                if len(kpd.shape) > 1:
+                    kpd = kpd[0]
                 # Add the existing source and destination correspondences
                 self.point_to_correspondence[point].add((r['source_image'],
                                                                   Correspondence(r['source_idx'],
