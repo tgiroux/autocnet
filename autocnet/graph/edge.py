@@ -317,7 +317,7 @@ class Edge(dict, MutableMapping):
                     self.dmembership[mindy:maxdy,
                                 mindx:maxdx] = d_submembership
                     pcounter += 4
-        
+
         # Now match the decomposed segments to one another
         for p in np.unique(self.smembership):
             sy_part, sx_part = np.where(self.smembership == p)
