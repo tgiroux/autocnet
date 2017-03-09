@@ -5,12 +5,13 @@ import warnings
 import numpy as np
 import pandas as pd
 from plio.io.io_gdal import GeoDataset
-from plio.io import io_hdf
 from plio.io.isis_serial_number import generate_serial_number
 from scipy.misc import bytescale
 
 from autocnet.cg import cg
 from autocnet.control.control import Correspondence, Point
+
+from autocnet.io import keypoints as io_keypoints
 
 from autocnet.matcher.add_depth import deepen_correspondences
 from autocnet.matcher import feature_extractor as fe
@@ -58,12 +59,14 @@ class Node(dict, MutableMapping):
     """
 
     def __init__(self, image_name=None, image_path=None, node_id=None):
-        self.image_name = image_name
-        self.image_path = image_path
-        self.node_id = node_id
+        self['image_name'] = image_name
+        self['image_path'] = image_path
+        self['node_id'] = node_id
+        self['hash'] = image_name
         self._mask_arrays = {}
         self.point_to_correspondence = defaultdict(set)
         self.point_to_correspondence_df = None
+        self.descriptors = None
 
     def __repr__(self):
         return """
@@ -73,12 +76,27 @@ class Node(dict, MutableMapping):
         Number Keypoints: {}
         Available Masks : {}
         Type: {}
-        """.format(self.node_id, self.image_name, self.image_path,
+        """.format(self['node_id'], self['image_name'], self['image_path'],
                    self.nkeypoints, self.masks, self.__class__)
 
+    def __eq__(self, other):
+        eq = True
+        d = self.__dict__
+        o = other.__dict__
+        for k, v in d.items():
+            if isinstance(v, pd.DataFrame):
+                if not v.equals(o[k]):
+                    eq = False
+                    print('N', k)
+            elif isinstance(v, np.ndarray):
+                if not v.all() == o[k].all():
+                    eq = False
+                    print('N2', k)
+        return eq
+    """
     def __getitem__(self, item):
-        attribute_dict = {'image_name': self.image_name,
-                          'image_path': self.image_path,
+        attribute_dict = {'image_name': self['image_name'],
+                          'image_path': self['image_path'],
                           'geodata': self.geodata,
                           'keypoints': self.keypoints,
                           'nkeypoints': self.nkeypoints,
@@ -89,11 +107,12 @@ class Node(dict, MutableMapping):
             return attribute_dict[item]
         else:
             return super(Node, self).__getitem__(item)
+    """
 
     @property
     def geodata(self):
-        if not getattr(self, '_geodata', None) and self.image_path is not None:
-            self._geodata = GeoDataset(self.image_path)
+        if not getattr(self, '_geodata', None) and self['image_path'] is not None:
+            self._geodata = GeoDataset(self['image_path'])
             return self._geodata
         if hasattr(self, '_geodata'):
             return self._geodata
@@ -133,7 +152,7 @@ class Node(dict, MutableMapping):
         """
         if not hasattr(self, '_isis_serial'):
             try:
-                self._isis_serial = generate_serial_number(self.image_path)
+                self._isis_serial = generate_serial_number(self['image_path'])
             except:
                 self._isis_serial = None
         return self._isis_serial
@@ -145,7 +164,7 @@ class Node(dict, MutableMapping):
         else:
             return 0
 
-    @property
+    """    @property
     def keypoints(self):
         if hasattr(self, '_keypoints'):
             return self._keypoints.copy()
@@ -157,7 +176,7 @@ class Node(dict, MutableMapping):
         if hasattr(self, '_descriptors'):
             return np.copy(self._descriptors)
         else:
-            return None
+            return None"""
 
     def coverage(self):
         """
@@ -259,7 +278,8 @@ class Node(dict, MutableMapping):
 
         return keypoints
 
-    def extract_features(self, array, **kwargs):
+    @staticmethod
+    def _extract_features(*args, **kwargs):
         """
         Extract features for the node
 
@@ -271,9 +291,12 @@ class Node(dict, MutableMapping):
                  kwargs passed to autocnet.feature_extractor.extract_features
 
         """
-        self._keypoints, self._descriptors = fe.extract_features(array, **kwargs)
+        pass
 
-    def load_features(self, in_path):
+    def extract_features(self, *args, **kwargs):
+        self._keypoints, self.descriptors = Node._extract_features(*args, **kwargs)
+
+    def load_features(self, in_path, format='npy'):
         """
         Load keypoints and descriptors for the given image
         from a HDF file.
@@ -282,69 +305,45 @@ class Node(dict, MutableMapping):
         ----------
         in_path : str or object
                   PATH to the hdf file or a HDFDataset object handle
+
+        format : {'npy', 'hdf'}
         """
-        if isinstance(in_path, str):
-            hdf = io_hdf.HDFDataset(in_path, mode='r')
-        else:
-            hdf = in_path
+        if format == 'npy':
+            keypoints, descriptors = io_keypoints.from_npy(in_path)
+        elif format == 'hdf':
+            keypoints, descriptors = io_keypoints.from_hdf(in_path,
+                                                           key=self['image_name'])
 
-        self._descriptors = hdf['{}/descriptors'.format(self.image_name)][:]
-        raw_kps = hdf['{}/keypoints'.format(self.image_name)][:]
-        index = raw_kps['index']
-        clean_kps = utils.remove_field_name(raw_kps, 'index')
-        columns = clean_kps.dtype.names
+        self._keypoints = keypoints
+        self.descriptors = descriptors
 
-        allkps = pd.DataFrame(data=clean_kps, columns=columns, index=index)
-
-        if 'response' in allkps.columns:
-            self._keypoints = allkps.sort_values(by='response', ascending=False)
-        elif 'size' in allkps.columns:
-            self._keypoints = allkps.sort_values(by='size', ascending=False)
-        if isinstance(in_path, str):
-            hdf = None
-
-    def save_features(self, out_path):
+    def save_features(self, out_path, format='npy'):
         """
         Save the extracted keypoints and descriptors to
-        the given HDF5 file.
+        the given HDF5 file.  By default, the .npz files are saved
+        along side the image, e.g. in the same folder as the image.
 
         Parameters
         ----------
         out_path : str or object
                    PATH to the hdf file or a HDFDataset object handle
+
+        format : {'npy', 'hdf'}
+                 The desired output format.
         """
 
         if not hasattr(self, '_keypoints'):
             warnings.warn('Node {} has not had features extracted.'.format(i))
             return
 
-        # If the out_path is a string, access the HDF5 file
-        if isinstance(out_path, str):
-            if os.path.exists(out_path):
-                mode = 'a'
-            else:
-                mode = 'w'
-            hdf = io_hdf.HDFDataset(out_path, mode=mode)
+        if format == 'hdf':
+            io_keypoints.to_hdf(self._keypoints, self.descriptors, out_path,
+                                key=self['image_name'])
+        elif format == 'npy':
+            io_keypoints.to_npy(self._keypoints, self.descriptors,
+                                out_path)
         else:
-            hdf = out_path
-
-        try:
-            hdf.create_dataset('{}/descriptors'.format(self.image_name),
-                               data=self._descriptors,
-                               compression=io_hdf.DEFAULT_COMPRESSION,
-                               compression_opts=io_hdf.DEFAULT_COMPRESSION_VALUE)
-            hdf.create_dataset('{}/keypoints'.format(self.image_name),
-                               data=hdf.df_to_sarray(self._keypoints.reset_index()),
-                               compression=io_hdf.DEFAULT_COMPRESSION,
-                               compression_opts=io_hdf.DEFAULT_COMPRESSION_VALUE)
-        except:
-            warnings.warn('Descriptors for the node {} are already stored'.format(self.image_name))
-
-        # If the out_path is a string, assume this method is being called as a singleton
-        # and close the hdf file gracefully.  If an object, let the instantiator of the
-        # object close the file
-        if isinstance(out_path, str):
-            hdf = None
+            warnings.warn('Unknown keypoint output format.')
 
     def group_correspondences(self, cg, *args, deepen=False, **kwargs):
         """
@@ -357,7 +356,7 @@ class Node(dict, MutableMapping):
         deepen : bool
                  If True, attempt to punch matches through to all incident edges.  Default: False
         """
-        node = self.node_id
+        node = self['node_id']
         # Get the edges incident to the current node
         incident_edges = set(cg.edges(node)).intersection(set(cg.edges()))
 

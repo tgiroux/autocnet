@@ -50,37 +50,18 @@ class TestTwoImageMatching(unittest.TestCase):
         # Step: Extract image data and attribute nodes
         cg.extract_features(method='sift', extractor_parameters={"nfeatures":500})
         for i, node in cg.nodes_iter(data=True):
-            self.assertIn(node.nkeypoints, range(490, 511))
+            self.assertIn(node.nkeypoints, range(490, 510))
 
         # Step: Compute the coverage ratios
-        truth_ratios = [0.95351579,
-                        0.93595664]
         for i, node in cg.nodes_iter(data=True):
             ratio = node.coverage_ratio()
-            self.assertIn(round(ratio, 8), truth_ratios)
+            self.assertTrue(0.93 < round(ratio, 8) < 0.96)
 
-        cg.decompose_and_match_features(k=2, maxiteration=2)
+        cg.decompose_and_match(k=2, maxiteration=2)
         self.assertTrue(isinstance(cg.edge[0][1].smembership, np.ndarray))
 
-        # Perform the symmetry check
-        cg.symmetry_checks()
-        # Perform the ratio check
-        cg.ratio_checks(clean_keys=['symmetry'], single=True)
         # Create fundamental matrix
-        cg.compute_fundamental_matrices(clean_keys = ['symmetry', 'ratio'])
-
-        for source, destination, edge in cg.edges_iter(data=True):
-
-            # Perform the symmetry check
-            self.assertIn(edge.masks['symmetry'].sum(), range(100, 400))
-            # Perform the ratio test
-            self.assertIn(edge.masks['ratio'].sum(), range(100, 300))
-
-            # Range needs to be set
-            self.assertIn(edge.masks['fundamental'].sum(), range(100, 300))
-
-        # Step: Compute the homographies and apply RANSAC
-        cg.compute_homographies(clean_keys=['symmetry', 'ratio'])
+        cg.compute_fundamental_matrices()
 
         # Apply AMNS
         cg.suppress(k=30, suppression_func=error)

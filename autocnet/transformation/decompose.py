@@ -39,7 +39,8 @@ def reproject_image_into_polar(data, origin=None):
 
 def coupled_decomposition(sdata, ddata, sorigin=(), dorigin=(), M=4, sub_skp=None):
     """
-    Apply coupled decomposition to two 2d images=.
+
+    Apply coupled decomposition to two 2d images.
 
     sdata : ndarray
             (n,m) array of values to decompose

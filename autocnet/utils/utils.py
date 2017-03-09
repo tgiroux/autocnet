@@ -205,16 +205,22 @@ def make_homogeneous(points):
 
     Parameters
     ----------
-    points : ndarray
+    points : arraylike
              n x m array of points, where n is the number
              of points.
 
     Returns
     -------
-     : ndarray
+     : arraylike
        n x m + 1 array of homogeneous points
     """
-    return np.hstack((points, np.ones((points.shape[0], 1))))
+    homogeneous = np.hstack((points, np.ones((points.shape[0], 1))))
+    if isinstance(points, pd.DataFrame):
+        columns = points.columns.values.tolist() + ['z']
+        homogeneous = pd.DataFrame(homogeneous, index=points.index,
+                                    columns=columns)
+    return homogeneous
+
 
 
 def remove_field_name(a, name):

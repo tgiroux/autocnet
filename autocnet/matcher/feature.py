@@ -1,6 +1,7 @@
 import warnings
 
 import cv2
+import numpy as np
 import pandas as pd
 
 FLANN_INDEX_KDTREE = 1  # Algorithm to set centers,
@@ -120,4 +121,7 @@ class FlannMatcher(object):
                     warnings.warn('Likely self neighbor in query!')
         return pd.DataFrame(matched, columns=['source_image', 'source_idx',
                                               'destination_image', 'destination_idx',
-                                              'distance'])
+                                              'distance']).astype(np.float32)
+
+def cudamatcher():
+    pass

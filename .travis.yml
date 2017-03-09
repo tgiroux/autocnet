@@ -54,7 +54,6 @@ install:
   # Development installation
   - conda install pytest pytest-cov coverage sh anaconda-client
   - pip install coveralls
-  - python runipynbs.py
 
     # Straight from the menpo team
   - if [["$TRAVIS_OS_NAME" == "osx"]]; then

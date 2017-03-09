@@ -6,15 +6,14 @@ import pandas as pd
 
 from scipy.spatial.distance import cdist
 
-from autocnet.utils import utils
-from autocnet.matcher import health
+import autocnet
 from autocnet.graph.node import Node
+from autocnet.utils import utils
 from autocnet.matcher import outlier_detector as od
 from autocnet.matcher import suppression_funcs as spf
 from autocnet.matcher import subpixel as sp
-from autocnet.matcher.feature import FlannMatcher
-from autocnet.transformation.decompose import coupled_decomposition
-from autocnet.transformation.transformations import FundamentalMatrix, Homography
+from autocnet.transformation import fundamental_matrix as fm
+from autocnet.transformation import homography as hm
 from autocnet.vis.graph_view import plot_edge, plot_node, plot_edge_decomposition
 from autocnet.cg import cg
 
@@ -31,12 +30,7 @@ class Edge(dict, MutableMapping):
     masks : set
             A list of the available masking arrays
 
-    provenance : dict
-                 With key equal to an autoincrementing integer and value
-                 equal to a dict of parameters used to generate this
-                 realization.
-
-    weight : dict
+    weights : dict
              Dictionary with two keys overlap_area, and overlap_percn
              overlap_area returns the area overlaped by both images
              overlap_percn retuns the total percentage of overlap
@@ -45,19 +39,10 @@ class Edge(dict, MutableMapping):
     def __init__(self, source=None, destination=None):
         self.source = source
         self.destination = destination
-
-        self.homography = None
-        self.fundamental_matrix = None
+        self['homography'] = None
+        self['fundamental_matrix'] = None
         self.matches = None
-        self._subpixel_offsets = None
-
-        self.provenance = {}
-        self.weight = {}
-
-        self._observers = set()
-
-        # Subscribe the heatlh observer
-        self._health = health.EdgeHealth()
+        self['weights'] = {}
 
     def __repr__(self):
         return """
@@ -66,21 +51,28 @@ class Edge(dict, MutableMapping):
         Available Masks: {}
         """.format(self.source, self.destination, self.masks)
 
-    def __getitem__(self, item):
-        attribute_dict = {'source': self.source,
-                          'destination': self.destination,
-                          'masks': self.masks,
-                          'provenance': self.provenance,
-                          'weight': self.weight}
-        if item in attribute_dict.keys():
-            return attribute_dict[item]
-        else:
-            return super(Edge, self).__getitem__(item)
+    def __eq__(self, other):
+        eq = True
+        d = self.__dict__
+        o = other.__dict__
+        for k, v in d.items():
+            # If the attribute key is missing they can not be equal
+            if not k in o.keys():
+                eq = False
+                return eq
+
+            if isinstance(v, pd.DataFrame):
+                if not v.equals(o[k]):
+                    eq = False
+            elif isinstance(v, np.ndarray):
+                if not v.all() == o[k].all():
+                    eq = False
+                    
+        return eq
 
     @property
     def masks(self):
-        mask_lookup = {'fundamental': 'fundamental_matrix',
-                       'ratio': 'distance_ratio'}
+        mask_lookup = {'fundamental': 'fundamental_matrix'}
         if not hasattr(self, '_masks'):
             if self.matches is not None:
                 self._masks = pd.DataFrame(True, columns=['symmetry'],
@@ -91,9 +83,13 @@ class Edge(dict, MutableMapping):
         # state, dynamically draw the mask from the object.
         for c in self._masks.columns:
             if c in mask_lookup:
-                truncated_mask = getattr(self, mask_lookup[c]).mask
-                self._masks[c] = False
-                self._masks[c].iloc[truncated_mask.index] = truncated_mask
+                try:
+                    truncated_mask = getattr(self, mask_lookup[c]).mask
+                    self._masks[c] = False
+                    self._masks[c].iloc[truncated_mask.index] = truncated_mask
+                except Exception:
+                    #TODO: Get rid of state
+                    pass
         return self._masks
 
     @masks.setter
@@ -102,248 +98,11 @@ class Edge(dict, MutableMapping):
         boolean_mask = v[1]
         self.masks[column_name] = boolean_mask
 
-    @property
-    def health(self):
-        return self._health.health
-
-    def decompose_and_match(self, k=2, maxiteration=3, size=18, buf_dist=3,**kwargs):
-        """
-        Similar to match, this method first decomposed the image into
-        $4^{maxiteration}$ subimages and applys matching between each sub-image.
-
-        This method is potential slower than the standard match due to the
-        overhead in matching, but can be significantly more accurate.  The
-        increase in accuracy is a function of the total image size.  Suggested
-        values for maxiteration are provided below.
-
-        Parameters
-        ----------
-        k : int
-            The number of neighbors to find
-
-        method : {'coupled', 'whole'}
-                 whether to utilize coupled decomposition
-                 or match the whole image
-
-        maxiteration : int
-                       When using coupled decomposition, the number of recursive
-                       divisions to apply.  The total number of resultant
-                       sub-images will be 4 ** maxiteration.  Approximate values:
-
-                        | Number of megapixels | maxiteration |
-                        |----------------------|--------------|
-                        | m < 10               |1-2|
-                        | 10 < m < 30          | 3 |
-                        | 30 < m < 100         | 4 |
-                        | 100 < m < 1000       | 5 |
-                        | m > 1000             | 6 |
-
-        size : int
-               When using coupled decomposition, the total number of points
-               to check in each sub-image to try and find a match.
-               Selection of this number is a balance between seeking a
-               representative mid-point and computational cost.
-
-        buf_dist : int
-                   When using coupled decomposition, the distance from the edge of
-                   the (sub)image a point must be in order to be used as a
-                   partioning point.  The smaller the distance, the more likely
-                   percision errors can results in erroneous partitions.
-        """
-        def mono_matches(a, b, aidx=None, bidx=None):
-            """
-            Apply the FLANN match_features
-
-            Parameters
-            ----------
-            a : object
-                A node object
-
-            b : object
-                A node object
-
-            aidx : iterable
-                   An index for the descriptors to subset
-
-            bidx : iterable
-                   An index for the descriptors to subset
-            """
-            # Subset if requested
-            if aidx is not None:
-                ad = a.descriptors[aidx]
-            else:
-                ad = a.descriptors
-
-            if bidx is not None:
-                bd = b.descriptors[bidx]
-            else:
-                bd = b.descriptors
-
-            # Load, train, and match
-            fl.add(ad, a.node_id, index=aidx)
-            fl.train()
-            matches = fl.query(bd, b.node_id, k, index=bidx)
-            self._add_matches(matches)
-            fl.clear()
-
-        def func(group):
-            ratio = 0.8
-            res = [False] * len(group)
-            if len(res) == 1:
-                return [single]
-            if group.iloc[0] < group.iloc[1] * ratio:
-                res[0] = True
-            return res
-
-        # Grab the original image arrays
-        sdata = self.source.get_array()
-        ddata = self.destination.get_array()
-
-        ssize = sdata.shape
-        dsize = ddata.shape
-
-        # Grab all the available candidate keypoints
-        skp = self.source.get_keypoints()
-        dkp = self.destination.get_keypoints()
-
-        # Set up the membership arrays
-        self.smembership = np.zeros(sdata.shape, dtype=np.int16)
-        self.dmembership = np.zeros(ddata.shape, dtype=np.int16)
-        self.smembership[:] = -1
-        self.dmembership[:] = -1
-        pcounter = 0
-
-        # FLANN Matcher
-        fl= FlannMatcher()
-
-        for k in range(maxiteration):
-            partitions = np.unique(self.smembership)
-            for p in partitions:
-                sy_part, sx_part = np.where(self.smembership == p)
-                dy_part, dx_part = np.where(self.dmembership == p)
-
-                # Get the source extent
-                minsy = np.min(sy_part)
-                maxsy = np.max(sy_part) + 1
-                minsx = np.min(sx_part)
-                maxsx = np.max(sx_part) + 1
-
-                # Get the destination extent
-                mindy = np.min(dy_part)
-                maxdy = np.max(dy_part) + 1
-                mindx = np.min(dx_part)
-                maxdx = np.max(dx_part) + 1
-
-                # Clip the sub image from the full images
-                asub = sdata[minsy:maxsy, minsx:maxsx]
-                bsub = ddata[mindy:maxdy, mindx:maxdx]
-
-                # Utilize the FLANN matcher to find a match to approximate a center
-                fl.add(self.destination.descriptors, self.destination.node_id)
-                fl.train()
-
-                scounter = 0
-                decompose = False
-                while True:
-                    sub_skp = skp.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(minsx, maxsx, minsy, maxsy))
-                    # Check the size to ensure a valid return
-                    if len(sub_skp) == 0:
-                        break # No valid keypoints in this (sub)image
-                    if size > len(sub_skp):
-                        size = len(sub_skp)
-                    candidate_idx = np.random.choice(sub_skp.index, size=size, replace=False)
-                    candidates = self.source.descriptors[candidate_idx]
-                    matches = fl.query(candidates, self.source.node_id, k=3, index=candidate_idx)
-
-                    # Apply Lowe's ratio test to try to find a 'good' starting point
-                    mask = matches.groupby('source_idx')['distance'].transform(func).astype('bool')
-                    candidate_matches = matches[mask]
-                    match_idx = candidate_matches['source_idx']
-
-                    # Extract those matches that pass the ratio check
-                    sub_skp = skp.iloc[match_idx]
-
-                    # Check that valid points remain
-                    if len(sub_skp) == 0:
-                        break
-
-                    # Locate the candidate closest to the middle of all of the matches
-                    smx, smy = sub_skp[['x', 'y']].mean()
-                    mid = np.array([[smx, smy]])
-                    dists = cdist(mid, sub_skp[['x', 'y']])
-                    closest = sub_skp.iloc[np.argmin(dists)]
-                    closest_idx = closest.name
-                    soriginx, soriginy = closest[['x', 'y']]
-
-                    # Grab the corresponding point in the destination
-                    q = candidate_matches.query('source_idx == {}'.format(closest.name))
-                    dest_idx = q['destination_idx'].iat[0]
-                    doriginx = dkp.at[dest_idx, 'x']
-                    doriginy = dkp.at[dest_idx, 'y']
-
-                    if mindy + buf_dist <= doriginy <= maxdy - buf_dist\
-                     and mindx + 3 <= doriginx <= maxdx - 3:
-                        # Point is good to split on
-                        decompose = True
-                        break
-                    else:
-                        scounter += 1
-                        if scounter >= maxiteration:
-                            break
-
-                # Clear the Flann matcher for reuse
-                fl.clear()
-
-                # Check that the identified match falls within the (sub)image
-                # This catches most bad matches that have passed the ratio check
-                if not (buf_dist <= doriginx - mindx <= bsub.shape[1] - buf_dist) or not\
-                       (buf_dist <= doriginy - mindy <= bsub.shape[0] - buf_dist):
-                       decompose = False
-
-                if decompose:
-                    # Apply coupled decomposition, shifting the origin to the sub-image
-                    s_submembership, d_submembership = coupled_decomposition(asub, bsub,
-                                                                         sorigin=(soriginx - minsx, soriginy - minsy),
-                                                                         dorigin=(doriginx - mindx, doriginy - mindy),
-                                                                         **kwargs)
-
-                    # Shift the returned membership counters to a set of unique numbers
-                    s_submembership += pcounter
-                    d_submembership += pcounter
-
-                    # And assign membership
-                    self.smembership[minsy:maxsy,
-                                minsx:maxsx] = s_submembership
-                    self.dmembership[mindy:maxdy,
-                                mindx:maxdx] = d_submembership
-                    pcounter += 4
-
-        # Now match the decomposed segments to one another
-        for p in np.unique(self.smembership):
-            sy_part, sx_part = np.where(self.smembership == p)
-            dy_part, dx_part = np.where(self.dmembership == p)
-
-            # Get the source extent
-            minsy = np.min(sy_part)
-            maxsy = np.max(sy_part) + 1
-            minsx = np.min(sx_part)
-            maxsx = np.max(sx_part) + 1
-
-            # Get the destination extent
-            mindy = np.min(dy_part)
-            maxdy = np.max(dy_part) + 1
-            mindx = np.min(dx_part)
-            maxdx = np.max(dx_part) + 1
-
-            # Get the indices of the candidate keypoints within those regions / variables are pulled before decomp.
-            sidx = skp.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(minsx, maxsx, minsy, maxsy)).index
-            didx = dkp.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(mindx, maxdx, mindy, maxdy)).index
-            # If the candidates < k, OpenCV throws an error
-            if len(sidx) >= k and len(didx) >=k:
-                mono_matches(self.source, self.destination, sidx, didx)
-                mono_matches(self.destination, self.source, didx, sidx)
+    def decompose_and_match(*args, **kwargs):
+        pass
 
     def match(self, k=2, **kwargs):
+
         """
         Given two sets of descriptors, utilize a FLANN (Approximate Nearest
         Neighbor KDTree) matcher to find the k nearest matches.  Nearness is
@@ -356,65 +115,7 @@ class Edge(dict, MutableMapping):
         k : int
             The number of neighbors to find
         """
-        def mono_matches(a, b, aidx=None, bidx=None):
-            """
-            Apply the FLANN match_features
-
-            Parameters
-            ----------
-            a : object
-                A node object
-
-            b : object
-                A node object
-
-            aidx : iterable
-                   An index for the descriptors to subset
-
-            bidx : iterable
-                   An index for the descriptors to subset
-            """
-            # Subset if requested
-            if aidx is not None:
-                ad = a.descriptors[aidx]
-            else:
-                ad = a.descriptors
-
-            if bidx is not None:
-                bd = b.descriptors[bidx]
-            else:
-                bd = b.descriptors
-
-            # Load, train, and match
-            fl.add(ad, a.node_id, index=aidx)
-            fl.train()
-            matches = fl.query(bd, b.node_id, k, index=bidx)
-            self._add_matches(matches)
-            fl.clear()
-
-        fl = FlannMatcher()
-        mono_matches(self.source, self.destination)
-        mono_matches(self.destination, self.source)
-
-
-
-    def _add_matches(self, matches):
-        """
-        Given a dataframe of matches, either append to an existing
-        matches edge attribute or initially populate said attribute.
-
-        Parameters
-        ----------
-        matches : dataframe
-                  A dataframe of matches
-        """
-        if self.matches is None:
-            self.matches = matches
-        else:
-            df = self.matches
-            self.matches = df.append(matches,
-                                     ignore_index=True,
-                                     verify_integrity=True)
+        pass
 
     def symmetry_check(self):
         if hasattr(self, 'matches'):
@@ -425,16 +126,9 @@ class Edge(dict, MutableMapping):
 
     def ratio_check(self, clean_keys=[], **kwargs):
         if hasattr(self, 'matches'):
-
             matches, mask = self.clean(clean_keys)
-
-            self.distance_ratio = od.DistanceRatio(matches)
-            self.distance_ratio.compute(mask=mask, **kwargs)
-
-            # Setup to be notified
-            self.distance_ratio._notify_subscribers(self.distance_ratio)
-
-            self.masks = ('ratio', self.distance_ratio.mask)
+            distance_mask = od.distance_ratio(matches, **kwargs)
+            self.masks = ('ratio', distance_mask)
         else:
             raise AttributeError('No matches have been computed for this edge.')
 
@@ -474,33 +168,14 @@ class Edge(dict, MutableMapping):
         s_keypoints.index = matches.index
         d_keypoints.index = matches.index
 
-        self.fundamental_matrix = FundamentalMatrix(np.zeros((3,3)), index=matches.index)
-        self.fundamental_matrix.compute(s_keypoints, d_keypoints, **kwargs)
+        self['fundamental_matrix'], fmask = fm.compute_fundamental_matrix(s_keypoints, d_keypoints, **kwargs)
 
-        # Convert the truncated RANSAC mask back into a full length mask
-        mask[mask] = self.fundamental_matrix.mask
+        if isinstance(self['fundamental_matrix'], np.ndarray):
+            # Convert the truncated RANSAC mask back into a full length mask
+            mask[mask] = fmask
 
-        # Subscribe the health watcher to the fundamental matrix observable
-        self.fundamental_matrix.subscribe(self._health.update)
-        self.fundamental_matrix._notify_subscribers(self.fundamental_matrix)
-
-        # Set the initial state of the fundamental mask in the masks
-        self.masks = ('fundamental', mask)
-
-    def refine_fundamental_matrix_matches(self, **kwargs): # pragma: no cover
-        """
-        Given an estimated fundamental matrix, refine the correspondences based
-        on the reprojective error.
-
-        See Also
-        --------
-        autocnet.transformation.transformations.FundamentalMatrix.refine_matches
-        """
-        if not hasattr(self, 'fundamental_matrix'):
-            raise AttributeError('No fundamental matrix exists for this edge.')
-            return
-
-        self.fundamental_matrix.refine_matches(**kwargs)
+            # Set the initial state of the fundamental mask in the masks
+            self.masks = ('fundamental', mask)
 
     def compute_homography(self, method='ransac', clean_keys=[], pid=None, **kwargs):
         """
@@ -532,16 +207,11 @@ class Edge(dict, MutableMapping):
         s_keypoints = self.source.get_keypoint_coordinates(index=matches['source_idx'])
         d_keypoints = self.destination.get_keypoint_coordinates(index=matches['destination_idx'])
 
-        self.homography = Homography(np.zeros((3,3)), index=self.masks.index)
-        self.homography.compute(s_keypoints.values,
-                                d_keypoints.values)
+        self['homography'], hmask = hm.compute_homography(s_keypoints.values, d_keypoints.values)
 
         # Convert the truncated RANSAC mask back into a full length mask
-        mask[mask] = self.homography.mask
+        mask[mask] = hmask
         self.masks = ('ransac', mask)
-
-        # Finalize the array to get custom attrs to propagate
-        self.homography.__array_finalize__(self.homography)
 
     def subpixel_register(self, clean_keys=[], threshold=0.8,
                           template_size=19, search_size=53, max_x_shift=1.0,
@@ -614,7 +284,6 @@ class Edge(dict, MutableMapping):
                                        'correlation', 'reference')] = [x_offset, y_offset, strength, source_image]
             except:
                 warnings.warn('Template-Search size mismatch, failing for this correspondence point.')
-                continue
 
         # Compute the mask for correlations less than the threshold
         threshold_mask = self.matches['correlation'] >= threshold
@@ -663,17 +332,9 @@ class Edge(dict, MutableMapping):
         merged = matches.merge(coords, left_on=['source_idx'], right_index=True)
         merged['strength'] = merged.apply(suppression_func, axis=1, args=([self]))
 
-        if not hasattr(self, 'suppression'):
-            # Instantiate the suppression object and suppress matches
-            self.suppression = od.SpatialSuppression(merged, domain, **kwargs)
-            self.suppression.suppress()
-        else:
-            for k, v in kwargs.items():
-                if hasattr(self.suppression, k):
-                    setattr(self.suppression, k, v)
-            self.suppression.suppress()
+        smask, k = od.spatial_suppression(merged, domain, **kwargs)
 
-        mask[mask] = self.suppression.mask
+        mask[mask] = smask
         self.masks = ('suppression', mask)
 
     def plot_source(self, ax=None, clean_keys=[], **kwargs):  # pragma: no cover
@@ -732,15 +393,15 @@ class Edge(dict, MutableMapping):
         """
         Acts on an edge and returns the overlap area and percentage of overlap
         between the two images on the edge. Data is returned to the
-        weight dictionary
+        weights dictionary
         """
         poly1 = self.source.geodata.footprint
         poly2 = self.destination.geodata.footprint
 
         overlapinfo = cg.two_poly_overlap(poly1, poly2)
 
-        self.weight['overlap_area'] = overlapinfo[1]
-        self.weight['overlap_percn'] = overlapinfo[0]
+        self['weights']['overlap_area'] = overlapinfo[1]
+        self['weights']['overlap_percn'] = overlapinfo[0]
 
     def coverage(self, clean_keys = []):
         """
@@ -810,3 +471,25 @@ class Edge(dict, MutableMapping):
             return self.source.get_keypoint_coordinates(index=matches['source_idx'], **kwargs)
         if node == "destination" or node == "d" or node == self.destination.node_id:
             return self.destination.get_keypoint_coordinates(index=matches['destination_idx'], **kwargs)
+
+    def decompose(self, maxiterations=3):
+        """
+        Apply coupled decomposition to the images and
+        match identified sub-images
+
+        Parameters
+        ----------
+        maxiterations : int
+                        The number of iterations. Appropriate values:
+
+                        | Number of megapixels | k |
+                        |----------------------|---|
+                        | m < 10               |1-2|
+                        | 10 < m < 30          | 3 |
+                        | 30 < m < 100         | 4 |
+                        | 100 < m < 1000       | 5 |
+                        | m > 1000             | 6 |
+
+
+        """
+        pass
