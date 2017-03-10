@@ -1,9 +1,12 @@
 import pandas as pd
 import numpy as np
+import geopandas as gpd
 import ogr
 
 from scipy.spatial import ConvexHull
 from scipy.spatial import Voronoi
+from shapely.geometry import Polygon, Point
+from shapely.affinity import scale
 import cv2
 
 from autocnet.utils import utils
@@ -150,102 +153,94 @@ def vor(graph, clean_keys=[], s=30):
             if neighbors != num_neighbors:
                 raise AssertionError('The graph is not complete')
 
-        source = graph.edges(0)[0]
-        destination = graph.edges()[0][1]
-        edge = graph.edge[source][destination]
-        matches, _ = edge.clean(clean_keys=['fundamental'])
-        kps = edge.source.get_keypoint_coordinates(index=matches['source_idx'], homogeneous=True)
+        intersection, proj_gdf, source_gdf = compute_intersection(graph.nodes()[0], graph, clean_keys)
 
-        intersection_poly = compute_intersection(graph, clean_keys)
-        intersection_points = intersection_poly.GetGeometryRef(0).GetPoints()
+        intersection_ind = intersection.query('overlaps_all == True').index.values[0]
 
-        centroid = intersection_poly.Centroid().GetPoint()
+        source_node = graph.nodes()[0]
+        for e in graph.edges():
+            if e[0] != source_node:
+                source_node = e[0]
+                intersection, proj_gdf, source_gdf = compute_intersection(source_node, graph, clean_keys)
+                intersection_ind = intersection.query('overlaps_all == True').index.values[0]
 
-        points = np.asarray(kps)
-        voronoi_np = []
+            edge = graph.edge[e[0]][e[1]]
+            matches, mask = edge.clean(clean_keys = clean_keys)
+            kps = edge.get_keypoints('source', clean_keys = clean_keys, homogeneous = True)
 
-        point_cloud = ogr.Geometry(ogr.wkbMultiPoint)
-        for p in points:
-            point = ogr.Geometry(ogr.wkbPoint)
-            point.AddPoint(double(p[0]), double(p[1]))
-            point_cloud.AddGeometry(point)
+            kps['geometry'] = kps.apply(lambda x: Point(x['x'], x['y']), axis = 1)
+            kps.mask = kps['geometry'].apply(lambda x: intersection.geometry.contains(x).all())
 
-        intersection_cloud = intersection_poly.Intersection(point_cloud)
+            # Creates a mask for displaying the voronoi points
+            # Currently erronious and produces NaN values
+            # mask[mask] = kps.mask
+            # edge.masks = ('voronoi', mask)
 
-        for p in intersection_cloud:
-            point = p.GetPoint(0)
-            voronoi_np.append(point)
+            keypoints = []
+            kps[kps.mask].apply(lambda x: keypoints.append((x['x'], x['y'])), axis = 1)
+            coords = source_gdf.geometry.apply(lambda x:scale(x, s, s).exterior.coords)
 
-        keypoints = np.asarray(voronoi_np)
-        voronoi_pd = pd.DataFrame(data=voronoi_np, columns=['x', 'y', 'homogenious'])
+            for point in coords:
+                keypoints = np.vstack((keypoints, point))
 
-        # Based on the keypoints found in the method
-        inters = np.empty((len(intersection_points),2))
+            vor = Voronoi(keypoints)
+            voronoi_df = pd.DataFrame(data = kps, columns = ['x', 'y', 'weight'])
 
-        for g, (i, j) in enumerate(intersection_points):
-            scaledx, scaledy = utils.scale_point((i, j), centroid, s)
-            point = np.array([scaledx, scaledy])
-            inters[g] = point
+            i = 0
+            vor_points = np.asarray(vor.points)
+            for region in vor.regions:
+                region_point = vor_points[np.argwhere(vor.point_region==i)]
+                if -1 not in region:
+                    polygon_points = [vor.vertices[i] for i in region]
+                    if len(polygon_points) != 0:
+                        polygon = Polygon(polygon_points)
+                        poly_area = polygon.intersection(intersection.geometry[intersection_ind]).area
+                        voronoi_df.loc[(voronoi_df["x"] == region_point[0][0][0]) &
+                                       (voronoi_df["y"] == region_point[0][0][1]),
+                                       'weight'] = poly_area
+                i += 1
 
-        keypoints = np.vstack((keypoints[:,:2], inters))
-        vor = Voronoi(keypoints)
-
-        voronoi_df = pd.DataFrame(columns=["x", "y", "weights"])
-        voronoi_df["x"] = kps['x']
-        voronoi_df["y"] = kps['y']
-
-        poly_array = []
-        for i, region in enumerate(vor.regions):
-            region_point = vor.points[np.argwhere(vor.point_region==i)]
-            if -1 not in region:
-                polygon_points = [vor.vertices[i] for i in region]
-                if len(polygon_points) != 0:
-                    polygon = utils.array_to_poly(polygon_points)
-                    intersection = polygon.Intersection(intersection_poly)
-                    poly_array = np.append(poly_array, intersection)
-                    polygon_area = intersection.GetArea()
-                    voronoi_df.loc[(voronoi_df["x"] == region_point[0][0][0]) &
-                                   (voronoi_df["y"] == region_point[0][0][1]),
-                                   'vor_weights'] = polygon_area
-
-        return vor, voronoi_df
+            edge.weight['vor_weight'] = voronoi_df['weight']
 
 
-def compute_intersection(graph, clean_keys=[]):
-    source_num = graph.edges()[0][0]
-    source = graph.node[source_num]
+def compute_intersection(source, graph, clean_keys=[]):
+    if type(source) is int:
+        source = graph.node[source]
+
     source_corners = source.geodata.xy_corners
-    total_intersect_poly = utils.array_to_poly(source_corners)
-    orig_poly = utils.array_to_poly(source_corners)
+    source_poly = Polygon(source_corners)
 
+    source_gdf = gpd.GeoDataFrame({'source_geom': [source_poly], 'source_node': [source.node_id]}).set_geometry('source_geom')
+
+    proj_list = []
+    proj_nodes = []
+    # Begin iterating through the nodes in the graph excluding the source node
     for n in graph.nodes_iter():
-        if n == source_num:
+        if n == source.node_id:
             continue
 
         # Define the edge, matches, and destination based on the zero node and the nth node
-        edge = graph.edge[source_num][n]
-        matches, _ = edge.clean(clean_keys=clean_keys)
-        destination = edge.destination
+        destination = graph.node[n]
         destination_corners = destination.geodata.xy_corners
 
-        kp1 = edge.source.get_keypoint_coordinates(index=matches['source_idx'], homogeneous=True)
-        kp2 = edge.destination.get_keypoint_coordinates(index=matches['destination_idx'], homogeneous=True)
+        edge = graph.edge[source.node_id][destination.node_id]
 
-        # If the source image has coordinate transformation data, us the footprint and
-        # coordinate transforms as it will produce a more accurate intersection
-        if edge.source.geodata.coordinate_transformation.this is not None:
-            source_footprint_poly = edge.source.geodata.footprint
-            destination_footprint_poly = edge.destination.geodata.footprint
+        # Will still need the check but the helper function will make these calls much easier to understand
+        if source.node_id > destination.node_id:
+            kp2 = edge.get_keypoints('source', clean_keys = clean_keys, homogeneous = True)
+            kp1 = edge.get_keypoints('destination', clean_keys = clean_keys, homogeneous = True)
+        else:
+            kp2 = edge.get_keypoints('destination', clean_keys = clean_keys, homogeneous = True)
+            kp1 = edge.get_keypoints('source', clean_keys = clean_keys, homogeneous = True)
 
-            intersection_poly = destination_footprint_poly.Intersection(source_footprint_poly)
+        # If the source image has coordinate transformation data
+        if (source.geodata.coordinate_transformation.this != None) and \
+        (destination.geodata.coordinate_transformation.this != None):
+            proj_poly = Polygon(destination.geodata.xy_corners)
 
         # Else, use the homography transform to get an intersection of the two images
         else:
-            H, mask = cv2.findHomography(kp2.values,
-                                         kp1.values,
-                                         cv2.RANSAC,
-                                         2.0)
-
+            H, mask = cv2.findHomography(kp2.values, kp1.values, cv2.RANSAC, 2.0)
             proj_corners = []
             for c in destination_corners:
                 x, y, h = utils.reproj_point(H, c)
@@ -254,12 +249,15 @@ def compute_intersection(graph, clean_keys=[]):
                 h /= h
                 proj_corners.append((x, y))
 
-            proj_poly = utils.array_to_poly(proj_corners)
+            proj_poly = Polygon(proj_corners)
 
-            intersection_poly = orig_poly.Intersection(proj_poly)
+        proj_list.append(proj_poly)
+        proj_nodes.append(n)
 
-        # Intersect the newly calculated intersection with the current total intersection
-        # to get the new bound of the overlap area
-        total_intersect_poly = intersection_poly.Intersection(total_intersect_poly)
+    proj_gdf = gpd.GeoDataFrame({'proj_geom': proj_list, 'proj_node': proj_nodes}).set_geometry('proj_geom')
 
-        return total_intersect_poly
+    intersect_gdf = gpd.overlay(source_gdf, proj_gdf, how='intersection')
+    intersect_gdf = intersect_gdf.rename(columns = {'geometry':'intersect_geom'}).set_geometry('intersect_geom')
+    intersect_gdf['overlaps_all'] = intersect_gdf.geometry.apply(lambda x:proj_gdf.geometry.contains(scale(x, .9, .9)).all())
+    intersection = intersect_gdf.query('overlaps_all == True').set_geometry('intersect_geom')
+    return intersection, proj_gdf, source_gdf

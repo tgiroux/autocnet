@@ -683,3 +683,6 @@ class CandidateGraph(nx.Graph):
         """
         edges = [(u, v) for u, v, edge in self.edges_iter(data=True) if func(edge, *args, **kwargs)]
         return self.create_edge_subgraph(edges)
+
+    def compute_vor_weight(self, clean_keys = [], **kwargs):
+        pass

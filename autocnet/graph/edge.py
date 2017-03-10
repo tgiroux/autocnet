@@ -465,11 +465,11 @@ class Edge(dict, MutableMapping):
             node = node.lower()
 
         if type(node) is Node:
-            node = node.node_id
+            node = node['node_id']
 
-        if node == "source" or node == "s" or node == self.source.node_id:
+        if node == "source" or node == "s" or node == self.source['node_id']:
             return self.source.get_keypoint_coordinates(index=matches['source_idx'], **kwargs)
-        if node == "destination" or node == "d" or node == self.destination.node_id:
+        if node == "destination" or node == "d" or node == self.destination['node_id']:
             return self.destination.get_keypoint_coordinates(index=matches['destination_idx'], **kwargs)
 
     def decompose(self, maxiterations=3):

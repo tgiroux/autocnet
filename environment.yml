@@ -17,6 +17,8 @@ dependencies:
   - numexpr
   - numpy>1.10.0
   - pandas
+  - geopandas
+  - shapely
   - pyyaml
   - scipy>0.17.0
   - sqlalchemy
