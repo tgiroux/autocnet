@@ -9,6 +9,7 @@ import pandas as pd
 from plio.io import io_hdf, io_json
 from plio.utils import utils as io_utils
 from plio.io.io_gdal import GeoDataset
+from autocnet.cg.cg import vor
 from autocnet.graph import markov_cluster
 from autocnet.graph.edge import Edge
 from autocnet.graph.node import Node
@@ -684,5 +685,19 @@ class CandidateGraph(nx.Graph):
         edges = [(u, v) for u, v, edge in self.edges_iter(data=True) if func(edge, *args, **kwargs)]
         return self.create_edge_subgraph(edges)
 
-    def compute_vor_weight(self, clean_keys = [], **kwargs):
-        pass
+    def compute_cliques(self, node_id):
+        if node_id is not None:
+            return list(nx.cliques_containing_node(self, nodes=node_id))
+        else:
+            return list(nx.find_cliques(self))
+
+    def compute_vor_weight(self, clean_keys, node_id=None, clique=False):
+        if clique:
+            cliques = self.compute_cliques(node_id)
+            for g in cliques:
+                subgraph = self.create_node_subgraph(g)
+                vor(subgraph, clean_keys)
+        else:
+            for e in self.edges_iter():
+                subgraph = self.create_node_subgraph(e)
+                vor(subgraph, clean_keys)

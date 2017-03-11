@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import networkx as nx
 import geopandas as gpd
 import ogr
 
@@ -110,16 +111,16 @@ def get_area(poly1, poly2):
     return intersection_area
 
 
-def vor(graph, clean_keys=[], s=30):
+def vor(graph, clean_keys, s=30):
         """
-        Creates a voronoi diagram for an edge using either the coordinate
-        transformation or using the homography between source and destination.
+        Creates a voronoi diagram for a complete graph using either the coordinate
+        transformation or using the homography based around a source node.
 
-        The coordinate transformation uses the footprint of source and destination to
-        calculate an intersection between the two images, then transforms the vertices of
+        The coordinate transformation uses the footprint of each image to
+        calculate an intersection between the image set, then transforms the vertices of
         the intersection back into pixel space.
 
-        If a coordinate transform does not exist, use the homography to project the destination image
+        If a coordinate transform does not exist, use the homography to project the n - 1 images
         onto the source image, producing an area of intersection.
 
         The intersection vertices are then scaled by a factor of s (default 30), this accounts for the
@@ -129,8 +130,8 @@ def vor(graph, clean_keys=[], s=30):
 
         Parameters
         ----------
-        edge : object
-               An edge object
+        graph : object
+               A networkx graph object
 
         clean_keys : list
                      Of strings used to apply masks to omit correspondences
@@ -147,10 +148,8 @@ def vor(graph, clean_keys=[], s=30):
                      3 column pandas dataframe of x, y, and weights
 
         """
-        num_neighbors = len(graph.nodes()) - 1
-        for n in graph.nodes():
-            neighbors = len(graph.neighbors(n))
-            if neighbors != num_neighbors:
+        neighbors_dict = nx.degree(graph)
+        if not all(value == len(graph.neighbors(graph.nodes()[0])) for value in neighbors_dict.values()):
                 raise AssertionError('The graph is not complete')
 
         intersection, proj_gdf, source_gdf = compute_intersection(graph.nodes()[0], graph, clean_keys)
@@ -165,10 +164,9 @@ def vor(graph, clean_keys=[], s=30):
                 intersection_ind = intersection.query('overlaps_all == True').index.values[0]
 
             edge = graph.edge[e[0]][e[1]]
-            matches, mask = edge.clean(clean_keys = clean_keys)
-            kps = edge.get_keypoints('source', clean_keys = clean_keys, homogeneous = True)
+            kps = edge.get_keypoints('source', clean_keys=clean_keys, homogeneous=True)
 
-            kps['geometry'] = kps.apply(lambda x: Point(x['x'], x['y']), axis = 1)
+            kps['geometry'] = kps.apply(lambda x: Point(x['x'], x['y']), axis=1)
             kps.mask = kps['geometry'].apply(lambda x: intersection.geometry.contains(x).all())
 
             # Creates a mask for displaying the voronoi points
@@ -200,7 +198,7 @@ def vor(graph, clean_keys=[], s=30):
                                        'weight'] = poly_area
                 i += 1
 
-            edge.weight['vor_weight'] = voronoi_df['weight']
+            edge['weights']['vor_weight'] = voronoi_df['weight']
 
 
 def compute_intersection(source, graph, clean_keys=[]):
@@ -210,23 +208,23 @@ def compute_intersection(source, graph, clean_keys=[]):
     source_corners = source.geodata.xy_corners
     source_poly = Polygon(source_corners)
 
-    source_gdf = gpd.GeoDataFrame({'source_geom': [source_poly], 'source_node': [source.node_id]}).set_geometry('source_geom')
+    source_gdf = gpd.GeoDataFrame({'source_geom': [source_poly], 'source_node': [source['node_id']]}).set_geometry('source_geom')
 
     proj_list = []
     proj_nodes = []
     # Begin iterating through the nodes in the graph excluding the source node
     for n in graph.nodes_iter():
-        if n == source.node_id:
+        if n == source['node_id']:
             continue
 
         # Define the edge, matches, and destination based on the zero node and the nth node
         destination = graph.node[n]
         destination_corners = destination.geodata.xy_corners
 
-        edge = graph.edge[source.node_id][destination.node_id]
+        edge = graph.edge[source['node_id']][destination['node_id']]
 
         # Will still need the check but the helper function will make these calls much easier to understand
-        if source.node_id > destination.node_id:
+        if source['node_id'] > destination['node_id']:
             kp2 = edge.get_keypoints('source', clean_keys = clean_keys, homogeneous = True)
             kp1 = edge.get_keypoints('destination', clean_keys = clean_keys, homogeneous = True)
         else:
@@ -234,8 +232,8 @@ def compute_intersection(source, graph, clean_keys=[]):
             kp1 = edge.get_keypoints('source', clean_keys = clean_keys, homogeneous = True)
 
         # If the source image has coordinate transformation data
-        if (source.geodata.coordinate_transformation.this != None) and \
-        (destination.geodata.coordinate_transformation.this != None):
+        if (source.geodata.coordinate_transformation.this is None) and \
+           (destination.geodata.coordinate_transformation.this is None):
             proj_poly = Polygon(destination.geodata.xy_corners)
 
         # Else, use the homography transform to get an intersection of the two images

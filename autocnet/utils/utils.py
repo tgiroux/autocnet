@@ -4,6 +4,7 @@ from functools import reduce
 
 import numpy as np
 import pandas as pd
+import networkx as nx
 
 from osgeo import ogr
 
@@ -386,3 +387,4 @@ def scale_point(point, centroid, scale):
     centroid = centroid[:2]
     vector = ((point - centroid)*scale) + centroid
     return vector
+
