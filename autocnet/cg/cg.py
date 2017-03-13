@@ -1,3 +1,5 @@
+import warnings
+
 import pandas as pd
 import numpy as np
 import networkx as nx
@@ -150,7 +152,7 @@ def vor(graph, clean_keys, s=30):
         """
         neighbors_dict = nx.degree(graph)
         if not all(value == len(graph.neighbors(graph.nodes()[0])) for value in neighbors_dict.values()):
-                raise AssertionError('The graph is not complete')
+            warnings.warn('The given graph is not complete and may yield garbage.')
 
         intersection, proj_gdf, source_gdf = compute_intersection(graph.nodes()[0], graph, clean_keys)
 
@@ -202,6 +204,23 @@ def vor(graph, clean_keys, s=30):
 
 
 def compute_intersection(source, graph, clean_keys=[]):
+    """
+
+    Parameters
+    ----------
+    source : int or object
+             Node id or Node object to use as the initial reprojection space
+
+    graph : object
+            a networkx graph object
+
+    clean_keys : list
+                 Of strings used to apply masks to omit correspondences
+
+    Returns
+    -------
+    intersection :
+    """
     if type(source) is int:
         source = graph.node[source]
 
@@ -225,11 +244,11 @@ def compute_intersection(source, graph, clean_keys=[]):
 
         # Will still need the check but the helper function will make these calls much easier to understand
         if source['node_id'] > destination['node_id']:
-            kp2 = edge.get_keypoints('source', clean_keys = clean_keys, homogeneous = True)
-            kp1 = edge.get_keypoints('destination', clean_keys = clean_keys, homogeneous = True)
+            kp2 = edge.get_keypoints('source', clean_keys=clean_keys, homogeneous=True)
+            kp1 = edge.get_keypoints('destination', clean_keys=clean_keys, homogeneous=True)
         else:
-            kp2 = edge.get_keypoints('destination', clean_keys = clean_keys, homogeneous = True)
-            kp1 = edge.get_keypoints('source', clean_keys = clean_keys, homogeneous = True)
+            kp2 = edge.get_keypoints('destination', clean_keys=clean_keys, homogeneous=True)
+            kp1 = edge.get_keypoints('source', clean_keys=clean_keys, homogeneous=True)
 
         # If the source image has coordinate transformation data
         if (source.geodata.coordinate_transformation.this is None) and \

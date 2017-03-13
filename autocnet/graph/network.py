@@ -685,19 +685,38 @@ class CandidateGraph(nx.Graph):
         edges = [(u, v) for u, v, edge in self.edges_iter(data=True) if func(edge, *args, **kwargs)]
         return self.create_edge_subgraph(edges)
 
-    def compute_cliques(self, node_id):
+    def compute_cliques(self, node_id=None):
+        """
+        Computes all maximum complete subgraphs for the given graph.
+        If a node_id is given, method will return only the complete subgraphs that
+        contain that node
+
+        Parameters
+        ----------
+        node_id : int
+                  Arbitrary integer value for a given node
+
+        Returns
+        -------
+        : list
+          A list of lists of node ids that make up maximum complete subgraphs of the given graph
+        """
+
         if node_id is not None:
             return list(nx.cliques_containing_node(self, nodes=node_id))
         else:
             return list(nx.find_cliques(self))
 
-    def compute_vor_weight(self, clean_keys, node_id=None, clique=False):
-        if clique:
-            cliques = self.compute_cliques(node_id)
-            for g in cliques:
-                subgraph = self.create_node_subgraph(g)
-                vor(subgraph, clean_keys)
-        else:
-            for e in self.edges_iter():
-                subgraph = self.create_node_subgraph(e)
-                vor(subgraph, clean_keys)
+    def compute_vor_weight(self, clean_keys):
+        """
+        Computes a voronoi weight for each edge in a given graph.
+        Can function as is, but is slightly optimized for complete subgraphs.
+
+        Parameters
+        ----------
+        clean_keys : list
+                     Strings used to apply masks to omit correspondences
+
+        """
+
+        vor(self, clean_keys)

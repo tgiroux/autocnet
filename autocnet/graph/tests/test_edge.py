@@ -86,10 +86,10 @@ class TestEdge(unittest.TestCase):
                             [0, 3, 1, 3],
                             [0, 4, 1, 4]]
 
-        matches_df = pd.DataFrame(data = keypoint_matches, columns = ['source_image', 'source_idx', 'destination_image', 'destination_idx'])
+        matches_df = pd.DataFrame(data=keypoint_matches, columns=['source_image', 'source_idx', 'destination_image', 'destination_idx'])
         e = edge.Edge()
-        source_node = MagicMock(spec = node.Node())
-        destination_node = MagicMock(spec = node.Node())
+        source_node = MagicMock(spec=node.Node())
+        destination_node = MagicMock(spec=node.Node())
 
         source_node.get_keypoint_coordinates = MagicMock(return_value=keypoint_df)
         destination_node.get_keypoint_coordinates = MagicMock(return_value=keypoint_df)
@@ -97,8 +97,8 @@ class TestEdge(unittest.TestCase):
         e.source = source_node
         e.destination = destination_node
 
-        source_geodata = Mock(spec = io_gdal.GeoDataset)
-        destination_geodata = Mock(spec = io_gdal.GeoDataset)
+        source_geodata = Mock(spec=io_gdal.GeoDataset)
+        destination_geodata = Mock(spec=io_gdal.GeoDataset)
 
         e.source.geodata = source_geodata
         e.destination.geodata = destination_geodata
@@ -121,8 +121,8 @@ class TestEdge(unittest.TestCase):
         def pixel_to_latlon(i, j):
             return vals[(i, j)]
 
-        e.source.geodata.pixel_to_latlon = MagicMock(side_effect = pixel_to_latlon)
-        e.destination.geodata.pixel_to_latlon = MagicMock(side_effect = pixel_to_latlon)
+        e.source.geodata.pixel_to_latlon = MagicMock(side_effect=pixel_to_latlon)
+        e.destination.geodata.pixel_to_latlon = MagicMock(side_effect=pixel_to_latlon)
 
         e.matches = matches_df
 

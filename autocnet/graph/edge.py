@@ -3,6 +3,7 @@ from collections import MutableMapping
 
 import numpy as np
 import pandas as pd
+import networkx as nx
 
 from scipy.spatial.distance import cdist
 
@@ -456,21 +457,30 @@ class Edge(dict, MutableMapping):
         """
         if self.matches is None:
             raise AttributeError('Matches have not been computed for this edge')
-        voronoi = cg.vor(self, clean_keys, **kwargs)
-        self.matches = pd.concat([self.matches, voronoi[1]['vor_weights']], axis=1)
+
+        cg.vor(self, clean_keys, **kwargs)
 
     def get_keypoints(self, node, clean_keys, **kwargs):
+
         matches, _ = self.clean(clean_keys=clean_keys)
+
         if type(node) is str:
             node = node.lower()
 
-        if type(node) is Node:
+        elif type(node) is Node:
             node = node['node_id']
+
+        else:
+            AssertionError('Node parameter is not a string or node object.')
 
         if node == "source" or node == "s" or node == self.source['node_id']:
             return self.source.get_keypoint_coordinates(index=matches['source_idx'], **kwargs)
-        if node == "destination" or node == "d" or node == self.destination['node_id']:
+
+        elif node == "destination" or node == "d" or node == self.destination['node_id']:
             return self.destination.get_keypoint_coordinates(index=matches['destination_idx'], **kwargs)
+
+        else:
+            AssertionError('Could not obtain the correct keypoints based on the given parameters.')
 
     def decompose(self, maxiterations=3):
         """
