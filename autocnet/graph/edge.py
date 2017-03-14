@@ -443,23 +443,6 @@ class Edge(dict, MutableMapping):
 
         return total_overlap_coverage
 
-    def compute_weights(self, clean_keys, **kwargs):
-        """
-        Computes a voronoi diagram for the overlap between two images
-        then gets the area of each polygon resulting in a voronoi weight.
-        These weights are then appended to the matches dataframe.
-
-        Parameters
-        ----------
-        clean_keys : list
-                     Of strings used to apply masks to omit correspondences
-
-        """
-        if self.matches is None:
-            raise AttributeError('Matches have not been computed for this edge')
-
-        cg.vor(self, clean_keys, **kwargs)
-
     def get_keypoints(self, node, clean_keys, **kwargs):
 
         matches, _ = self.clean(clean_keys=clean_keys)
