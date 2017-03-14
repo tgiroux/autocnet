@@ -49,7 +49,7 @@ install:
   - conda install -c conda-forge vlfeat
   - conda install -c menpo cyvlfeat
   - pip install pillow pysal
-  - conda install scipy networkx numexpr dill cython pyyaml matplotlib runipy
+  - conda install scipy networkx numexpr dill cython pyyaml matplotlib runipy geopandas
 
   # Development installation
   - conda install pytest pytest-cov coverage sh anaconda-client
