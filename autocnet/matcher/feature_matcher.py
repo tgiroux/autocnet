@@ -71,3 +71,5 @@ def match(self, k=2, **kwargs):
     fl = FlannMatcher()
     mono_matches(self.source, self.destination, **kwargs)
     mono_matches(self.destination, self.source, **kwargs)
+
+    self.matches.sort_values(by=['distance'])
