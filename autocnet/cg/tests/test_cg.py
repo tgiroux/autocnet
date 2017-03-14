@@ -123,7 +123,7 @@ class TestArea(unittest.TestCase):
         cang.edges = MagicMock(return_value=([(0, 1)]))
         cang.edge = {0: {1: e}, 1: {0: e}}
 
-        cg.vor(cang, clean_keys=['fundamental'])
+        cg.vor(cang, clean_keys=[])
         self.assertAlmostEqual(e['weights']['vor_weight'][0], 22.5)
         self.assertAlmostEqual(e['weights']['vor_weight'][1], 26.25)
         self.assertAlmostEqual(e['weights']['vor_weight'][2], 37.5)
@@ -245,7 +245,7 @@ class TestArea(unittest.TestCase):
         e.destination.geodata.footprint = destination_poly
         e.destination.geodata.xy_corners = destination_corners
         e.destination.geodata.xy_extent = destination_xy_extent
-        cg.vor(cang, clean_keys=['fundamental'])
+        cg.vor(cang, clean_keys=[])
         self.assertAlmostEqual(e['weights']['vor_weight'][0], 22.5)
         self.assertAlmostEqual(e['weights']['vor_weight'][1], 26.25)
         self.assertAlmostEqual(e['weights']['vor_weight'][2], 37.5)
