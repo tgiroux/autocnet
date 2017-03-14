@@ -362,29 +362,3 @@ def reproj_point(H, corner):
     return H.dot(coords)
 
 
-def scale_point(point, centroid, scale):
-    """
-    Given a point, centroid, and a scalar scales the given pointer
-    around the given centroid
-
-    Parameters
-    ----------
-    point : tuple
-            (x, y) coordinates for a given point
-
-    centroid : tuple
-               (x, y, 0) coordinates for the centroid of a polygon
-
-    scale : int
-            The multiplier to scale by
-
-    Returns
-    -------
-    vector : ndarray
-             (2, 1) array of the scaled point returned in x, y form
-    """
-    point = np.asarray(point)
-    centroid = centroid[:2]
-    vector = ((point - centroid)*scale) + centroid
-    return vector
-

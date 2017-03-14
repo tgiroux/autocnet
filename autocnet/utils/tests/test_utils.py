@@ -140,3 +140,11 @@ class TestUtils(unittest.TestCase):
 
         self.assertIsInstance(geom1, ogr.Geometry)
         self.assertRaises(ValueError, utils.array_to_poly, array2)
+
+    def test_reproj(self):
+        H = np.asarray([[2, 1, 0], [2, 1, 0], [0, 0, 0]])
+        corner = (1, 1)
+        new_c = utils.reproj_point(H, corner)
+        self.assertEqual(new_c[0], 3)
+        self.assertEqual(new_c[1], 3)
+        self.assertEqual(new_c[2], 0)

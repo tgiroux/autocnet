@@ -165,3 +165,18 @@ def test_apply_func_to_edges(graph):
 
     assert not graph[0][2].masks['symmetry'].all()
     assert not graph[0][1].masks['symmetry'].all()
+
+
+def test_cliques():
+    graph = network.CandidateGraph()
+    # for i in range(0, 8):
+    #     graph.add_node(i)
+    graph.add_nodes_from([0, 1, 2, 3, 4, 5, 6, 7])
+    graph.add_edges_from([(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3), (3, 4), (3, 7), (4, 5), (4, 6), (5, 6)])
+    cliques = graph.compute_cliques()
+    limited_cliques = graph.compute_cliques(node_id=3)
+    print(cliques, limited_cliques)
+    assert len(cliques) == 4
+    assert len(limited_cliques) == 3
+    assert cliques[2][0] == 3
+    assert cliques[2][1] == 7

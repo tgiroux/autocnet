@@ -701,7 +701,6 @@ class CandidateGraph(nx.Graph):
         : list
           A list of lists of node ids that make up maximum complete subgraphs of the given graph
         """
-
         if node_id is not None:
             return list(nx.cliques_containing_node(self, nodes=node_id))
         else:
@@ -718,5 +717,4 @@ class CandidateGraph(nx.Graph):
                      Strings used to apply masks to omit correspondences
 
         """
-
         vor(self, clean_keys)
