@@ -118,14 +118,14 @@ class Edge(dict, MutableMapping):
         pass
 
     def symmetry_check(self):
-        if hasattr(self, 'matches'):
+        if self.matches:
             mask = od.mirroring_test(self.matches)
             self.masks = ('symmetry', mask)
         else:
             raise AttributeError('No matches have been computed for this edge.')
 
     def ratio_check(self, clean_keys=[], **kwargs):
-        if hasattr(self, 'matches'):
+        if self.matches:
             matches, mask = self.clean(clean_keys)
             distance_mask = od.distance_ratio(matches, **kwargs)
             self.masks = ('ratio', distance_mask)
@@ -152,7 +152,7 @@ class Edge(dict, MutableMapping):
         autocnet.transformation.transformations.FundamentalMatrix
 
         """
-        if not hasattr(self, 'matches'):
+        if not self.matches:
             raise AttributeError('Matches have not been computed for this edge')
             return
         matches, mask = self.clean(clean_keys)
@@ -197,7 +197,7 @@ class Edge(dict, MutableMapping):
                Boolean array of the outliers
         """
 
-        if hasattr(self, 'matches'):
+        if self.matches:
             matches = self.matches
         else:
             raise AttributeError('Matches have not been computed for this edge')
@@ -321,7 +321,7 @@ class Edge(dict, MutableMapping):
                      of mask keys to be used to reduce the total size
                      of the matches dataframe.
         """
-        if not hasattr(self, 'matches'):
+        if not self.matches:
             raise AttributeError('This edge does not yet have any matches computed.')
 
         matches, mask = self.clean(clean_keys)

@@ -3,6 +3,7 @@ from unittest.mock import Mock
 from unittest.mock import MagicMock
 
 import ogr
+import numpy as np
 import pandas as pd
 from plio.io import io_gdal
 
@@ -44,6 +45,24 @@ class TestEdge(unittest.TestCase):
 
     def test_masks(self):
         self.assertIsInstance(self.edge.masks, pd.DataFrame)
+
+        keypoint_matches = [[0, 0, 1, 4],
+                            [0, 1, 1, 3],
+                            [0, 2, 1, 2],
+                            [0, 3, 1, 1],
+                            [0, 4, 1, 0]]
+
+        # Test masks returns properly
+        matches_df = pd.DataFrame(data=keypoint_matches, columns=['source_image', 'source_idx',
+                                                                  'destination_image', 'destination_idx'])
+        e = edge.Edge()
+        e.matches = matches_df
+        expected = pd.DataFrame(True, columns=['symmetry'],
+                                index=matches_df.index)
+        self.assertTrue(e.masks.equals(expected))
+
+    def test_masks_setter(self):
+        e = edge.Edge()
 
 
     def test_compute_fundamental_matrix(self):
@@ -321,3 +340,60 @@ class TestEdge(unittest.TestCase):
         # Check key error thrown when string arg != "source" or "destination"
         with self.assertRaises(KeyError):
             e.get_keypoints("string", clean_keys)
+
+    def test_eq(self):
+        edge1 = edge.Edge()
+        edge2 = edge.Edge()
+        edge3 = edge.Edge()
+
+        # Test edges w/ different keys are not equal, ones with same keys are
+        edge1.__dict__["key"] = 1
+        edge2.__dict__["key"] = 1
+        edge3.__dict__["not_key"] = 1
+
+        self.assertTrue(edge1 == edge2)
+        self.assertFalse(edge1 == edge3)
+
+        # Test edges with same keys, but diff df values
+        edge1.__dict__["key"] = pd.DataFrame({'x': (0, 1, 2, 3, 4)})
+        edge2.__dict__["key"] = pd.DataFrame({'x': (0, 1, 2, 3, 4)})
+        edge3.__dict__["key"] = pd.DataFrame({'x': (0, 1, 2, 3, 5)})
+
+        self.assertTrue(edge1 == edge2)
+        self.assertFalse(edge1 == edge3)
+
+        # Test edges with same keys, but diff np array vals
+        # edge.__eq__ calls ndarray.all(), which checks that
+        # all values in an array eval to true
+        edge1.__dict__["key"] = np.array([True, True, True], dtype=np.bool)
+        edge2.__dict__["key"] = np.array([True, True, True], dtype=np.bool)
+        edge3.__dict__["key"] = np.array([True, True, False], dtype=np.bool)
+
+        self.assertTrue(edge1 == edge2)
+        self.assertFalse(edge1 == edge3)
+
+    def test_repr(self):
+        src = node.Node()
+        dst = node.Node()
+        masks = pd.DataFrame()
+
+        e = edge.Edge()
+        e.source = src
+        e.destination = dst
+
+        expected = """
+        Source Image Index: {}
+        Destination Image Index: {}
+        Available Masks: {}
+        """.format(src, dst, masks)
+
+        self.assertEqual(expected, e.__repr__())
+
+    def test_symmetry_check(self):
+        # Matches is init to None
+        e = edge.Edge()
+        e.source = node.Node()
+        e.destination = node.Node()
+        # If there are no matches, should raise attrib err
+        with (self.assertRaises(AttributeError)):
+            e.symmetry_check()
