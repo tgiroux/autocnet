@@ -74,22 +74,11 @@ class Edge(dict, MutableMapping):
     def masks(self):
         mask_lookup = {'fundamental': 'fundamental_matrix'}
         if not hasattr(self, '_masks'):
-            if self.matches is not None:
+            if isinstance(self.matches, pd.DataFrame):
                 self._masks = pd.DataFrame(True, columns=['symmetry'],
                                            index=self.matches.index)
             else:
                 self._masks = pd.DataFrame()
-        # If the mask is coming form another object that tracks
-        # state, dynamically draw the mask from the object.
-        for c in self._masks.columns:
-            if c in mask_lookup:
-                try:
-                    truncated_mask = getattr(self, mask_lookup[c]).mask
-                    self._masks[c] = False
-                    self._masks[c].iloc[truncated_mask.index] = truncated_mask
-                except Exception:
-                    #TODO: Get rid of state
-                    pass
         return self._masks
 
     @masks.setter
@@ -118,14 +107,14 @@ class Edge(dict, MutableMapping):
         pass
 
     def symmetry_check(self):
-        if self.matches:
+        if isinstance(self.matches, pd.DataFrame):
             mask = od.mirroring_test(self.matches)
             self.masks = ('symmetry', mask)
         else:
             raise AttributeError('No matches have been computed for this edge.')
 
     def ratio_check(self, clean_keys=[], **kwargs):
-        if self.matches:
+        if isinstance(self.matches, pd.DataFrame):
             matches, mask = self.clean(clean_keys)
             distance_mask = od.distance_ratio(matches, **kwargs)
             self.masks = ('ratio', distance_mask)
@@ -152,7 +141,7 @@ class Edge(dict, MutableMapping):
         autocnet.transformation.transformations.FundamentalMatrix
 
         """
-        if not self.matches:
+        if not isinstance(self.matches, pd.DataFrame):
             raise AttributeError('Matches have not been computed for this edge')
             return
         matches, mask = self.clean(clean_keys)
@@ -197,7 +186,7 @@ class Edge(dict, MutableMapping):
                Boolean array of the outliers
         """
 
-        if self.matches:
+        if isinstance(self.matches, pd.DataFrame):
             matches = self.matches
         else:
             raise AttributeError('Matches have not been computed for this edge')
@@ -321,7 +310,7 @@ class Edge(dict, MutableMapping):
                      of mask keys to be used to reduce the total size
                      of the matches dataframe.
         """
-        if not self.matches:
+        if not isinstance(self.matches, pd.DataFrame):
             raise AttributeError('This edge does not yet have any matches computed.')
 
         matches, mask = self.clean(clean_keys)
@@ -418,7 +407,7 @@ class Edge(dict, MutableMapping):
                                    returns the overlap area
                                    covered by the keypoints
         """
-        if self.matches is None:
+        if not isinstance(self.matches, pd.DataFrame):
             raise AttributeError('Edge needs to have features extracted and matched')
             return
         matches, mask = self.clean(clean_keys)
@@ -454,7 +443,7 @@ class Edge(dict, MutableMapping):
                      Of strings used to apply masks to omit correspondences
 
         """
-        if self.matches is None:
+        if not isinstance(self.matches, pd.DataFrame):
             raise AttributeError('Matches have not been computed for this edge')
         voronoi = cg.vor(self, clean_keys, **kwargs)
         self.matches = pd.concat([self.matches, voronoi[1]['vor_weights']], axis=1)

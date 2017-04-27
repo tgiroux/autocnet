@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from plio.io import io_gdal
 
+from autocnet.matcher import outlier_detector as od
 from autocnet.examples import get_path
 from autocnet.graph.network import CandidateGraph
 from autocnet.utils.utils import array_to_poly
@@ -45,24 +46,33 @@ class TestEdge(unittest.TestCase):
 
     def test_masks(self):
         self.assertIsInstance(self.edge.masks, pd.DataFrame)
-
-        keypoint_matches = [[0, 0, 1, 4],
-                            [0, 1, 1, 3],
-                            [0, 2, 1, 2],
-                            [0, 3, 1, 1],
-                            [0, 4, 1, 0]]
-
-        # Test masks returns properly
-        matches_df = pd.DataFrame(data=keypoint_matches, columns=['source_image', 'source_idx',
-                                                                  'destination_image', 'destination_idx'])
+        matches = [[0, 0, 1, 0],
+                   [0, 1, 1, 1],
+                   [0, 2, 1, 2],
+                   [0, 3, 1, 3],
+                   [0, 4, 1, 4]]
+        matches_df = pd.DataFrame(data=matches,
+                                  columns=['source_image', 'source_idx',
+                                           'destination_image',
+                                           'destination_idx'])
         e = edge.Edge()
         e.matches = matches_df
+
+        # Test empty masks df on an edge with computed matches
         expected = pd.DataFrame(True, columns=['symmetry'],
                                 index=matches_df.index)
-        self.assertTrue(e.masks.equals(expected))
+        self.assertTrue(expected.equals(e.masks))
 
-    def test_masks_setter(self):
-        e = edge.Edge()
+        # Test the masks setter, changing a given row
+        new_symmetry_rows = [True, False, True, False, True]
+        e.masks = "symmetry", new_symmetry_rows
+
+        self.assertEqual(new_symmetry_rows, list(e.masks.loc[:, "symmetry"]))
+
+        # Test the masks setter, inserting a new row
+        e.masks = "fundamental", new_symmetry_rows
+        self.assertEqual(new_symmetry_rows, list(e.masks.loc[:, "fundamental"]))
+
 
 
     def test_compute_fundamental_matrix(self):
@@ -397,3 +407,24 @@ class TestEdge(unittest.TestCase):
         # If there are no matches, should raise attrib err
         with (self.assertRaises(AttributeError)):
             e.symmetry_check()
+
+    def test_ratio_check(self):
+        # Matches is init to None
+        e = edge.Edge()
+        # If there are no matches, should raise attrib err
+        with (self.assertRaises(AttributeError)):
+            e.ratio_check()
+
+        # If there are matches...
+        keypoint_matches = [[0, 0, 1, 4, 5],
+                            [0, 1, 1, 3, 5],
+                            [0, 2, 1, 2, 5],
+                            [0, 3, 1, 1, 5],
+                            [0, 4, 1, 0, 5]]
+
+        matches_df = pd.DataFrame(data=keypoint_matches, columns=['source_image', 'source_idx',
+                                                                  'destination_image', 'destination_idx', 'distance'])
+        e.matches = matches_df
+        expected = list(od.distance_ratio(matches_df))
+        e.ratio_check()
+        self.assertEqual(expected, list(e.masks["ratio"]))
