@@ -66,7 +66,6 @@ install:
 
 script:
   - pytest --cov=autocnet
-  # clean up any remaining processes...
 
 after_success:
   # Upload to anaconda and push to coveralls
