@@ -33,4 +33,4 @@ def match(self, ratio=0.8, **kwargs):
 
     # Set the matches and set the 'ratio' (ambiguity) mask
     self.matches = df
-    self.masks = ('ratio', df['ambiguity'] <= ratio)
+    self.masks['ratio'] = df['ambiguity'] <= ratio
