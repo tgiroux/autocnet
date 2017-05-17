@@ -5,3 +5,4 @@ sqlalchemy
 matplotlib
 numpy
 scipy
+nbsphinx
