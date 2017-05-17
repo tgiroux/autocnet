@@ -1,4 +1,3 @@
-import pandas as pd
 from autocnet.matcher.feature import FlannMatcher
 
 def match(self, k=2, **kwargs):
@@ -69,19 +68,8 @@ def match(self, k=2, **kwargs):
         _add_matches(matches)
         fl.clear()
 
-    # TODO: This should be converted to a decorator on the class
-    # TODO: This entire method should never have access to the class
-    self.masks = pd.DataFrame()
-
     fl = FlannMatcher()
     mono_matches(self.source, self.destination, **kwargs)
-
-    # Since this matches bidirectionally
-    if 'aidx' in kwargs.keys():
-        if not 'bidx' in kwargs.keys():
-            kwargs['bidx'] = None
-        kwargs['aidx'], kwargs['bidx'] = kwargs['bidx'], kwargs['aidx']
-
     mono_matches(self.destination, self.source, **kwargs)
 
     self.matches.sort_values(by=['distance'])
