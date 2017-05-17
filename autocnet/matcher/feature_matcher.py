@@ -83,3 +83,5 @@ def match(self, k=2, **kwargs):
         kwargs['aidx'], kwargs['bidx'] = kwargs['bidx'], kwargs['aidx']
 
     mono_matches(self.destination, self.source, **kwargs)
+
+    self.matches.sort_values(by=['distance'])
