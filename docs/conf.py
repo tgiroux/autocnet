@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 
 autodoc_mock_imports = ['proj4', 'gdal', 'osr','ogr', 'cv2', 'scikit-image',
-                        'skimage', 'skimage.feature', 'sklearn', 'osgeo']
+                        'skimage', 'skimage.feature', 'sklearn', 'osgeo', 'plio']
 
 '''
 class Mock(MagicMock):
