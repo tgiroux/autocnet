@@ -7,6 +7,7 @@ import pandas as pd
 from scipy.spatial.distance import cdist
 
 import autocnet
+from autocnet.graph.node import Node
 from autocnet.utils import utils
 from autocnet.matcher import outlier_detector as od
 from autocnet.matcher import suppression_funcs as spf
@@ -73,22 +74,11 @@ class Edge(dict, MutableMapping):
     def masks(self):
         mask_lookup = {'fundamental': 'fundamental_matrix'}
         if not hasattr(self, '_masks'):
-            if self.matches is not None:
+            if isinstance(self.matches, pd.DataFrame):
                 self._masks = pd.DataFrame(True, columns=['symmetry'],
                                            index=self.matches.index)
             else:
                 self._masks = pd.DataFrame()
-        # If the mask is coming form another object that tracks
-        # state, dynamically draw the mask from the object.
-        for c in self._masks.columns:
-            if c in mask_lookup:
-                try:
-                    truncated_mask = getattr(self, mask_lookup[c]).mask
-                    self._masks[c] = False
-                    self._masks[c].iloc[truncated_mask.index] = truncated_mask
-                except Exception:
-                    #TODO: Get rid of state
-                    pass
         return self._masks
 
     @masks.setter
@@ -117,14 +107,14 @@ class Edge(dict, MutableMapping):
         pass
 
     def symmetry_check(self):
-        if hasattr(self, 'matches'):
+        if isinstance(self.matches, pd.DataFrame):
             mask = od.mirroring_test(self.matches)
             self.masks = ('symmetry', mask)
         else:
             raise AttributeError('No matches have been computed for this edge.')
 
     def ratio_check(self, clean_keys=[], **kwargs):
-        if hasattr(self, 'matches'):
+        if isinstance(self.matches, pd.DataFrame):
             matches, mask = self.clean(clean_keys)
             distance_mask = od.distance_ratio(matches, **kwargs)
             self.masks = ('ratio', distance_mask)
@@ -151,7 +141,7 @@ class Edge(dict, MutableMapping):
         autocnet.transformation.transformations.FundamentalMatrix
 
         """
-        if not hasattr(self, 'matches'):
+        if not isinstance(self.matches, pd.DataFrame):
             raise AttributeError('Matches have not been computed for this edge')
             return
         matches, mask = self.clean(clean_keys)
@@ -196,7 +186,7 @@ class Edge(dict, MutableMapping):
                Boolean array of the outliers
         """
 
-        if hasattr(self, 'matches'):
+        if isinstance(self.matches, pd.DataFrame):
             matches = self.matches
         else:
             raise AttributeError('Matches have not been computed for this edge')
@@ -320,7 +310,7 @@ class Edge(dict, MutableMapping):
                      of mask keys to be used to reduce the total size
                      of the matches dataframe.
         """
-        if not hasattr(self, 'matches'):
+        if not isinstance(self.matches, pd.DataFrame):
             raise AttributeError('This edge does not yet have any matches computed.')
 
         matches, mask = self.clean(clean_keys)
@@ -417,7 +407,7 @@ class Edge(dict, MutableMapping):
                                    returns the overlap area
                                    covered by the keypoints
         """
-        if self.matches is None:
+        if not isinstance(self.matches, pd.DataFrame):
             raise AttributeError('Edge needs to have features extracted and matched')
             return
         matches, mask = self.clean(clean_keys)
@@ -453,7 +443,7 @@ class Edge(dict, MutableMapping):
                      Of strings used to apply masks to omit correspondences
 
         """
-        if self.matches is None:
+        if not isinstance(self.matches, pd.DataFrame):
             raise AttributeError('Matches have not been computed for this edge')
         voronoi = cg.vor(self, clean_keys, **kwargs)
         self.matches = pd.concat([self.matches, voronoi[1]['vor_weights']], axis=1)
@@ -479,3 +469,65 @@ class Edge(dict, MutableMapping):
 
         """
         pass
+
+    def get_keypoints(self, node, clean_keys):
+        """
+
+        Returns a list of keypoint coordinates that match the specified
+        paramaters
+
+        Parameters
+        ----------
+        node :      str or Node
+                    Can be "source" or "destination" based on which node we're
+                    pulling keypoint data for; Also can pass Node obj itself
+
+        clean_keys :    list
+                        List of clean key strings
+
+        Return
+        ------
+        masked_keypts : Dataframe
+                        Dataframe of keypoints that match the specified masks
+                        on the specified node
+        """
+
+        # Assert parameter types are correct
+        try:
+            assert (isinstance(node, str) or isinstance(node, Node))
+        except AssertionError:
+            raise TypeError('Parameter "node" must be of type str or type Node')
+        try:
+            assert isinstance(clean_keys, list)
+        except AssertionError:
+            raise TypeError('Parameter "clean_keys" must be of type list')
+
+        # If node param is a string, make sure it's one of the right strings
+        if isinstance(node, str):
+            try:
+                assert (node in ["source", "destination"])
+                # Define the node if str is passed as param
+                if node == "source":
+                    node = self.source
+                elif node == "destination":
+                    node = self.destination
+            except AssertionError:
+                raise KeyError('node" parameter must be "source"' +
+                               'or "destination"')
+
+        # Get cleaned, combined src & dst keypt df for this edge ("matches")
+        matches, mask = self.clean(clean_keys)
+
+        # Grab the keypt indices filtered by clean_keys as ints, pandas
+        # complains when you use them as indicies if they're not ints
+        if node == self.source:
+            keypt_indices = matches["source_idx"].astype(int)
+        elif node == self.destination:
+            keypt_indices = matches["destination_idx"].astype(int)
+
+        # Get all keypts for the specified node
+        all_keypts = node.get_keypoints()
+        # Return keypts @ masked indecies for the node
+        masked_keypts = all_keypts.iloc[keypt_indices].sort_index()
+
+        return masked_keypts
