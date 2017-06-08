@@ -3,6 +3,9 @@ import warnings
 import cudasift as cs
 
 def extract_features(array, nfeatures=None):
+    """
+    A custom docstring.
+    """
     if not nfeatures:
         nfeatures = int(max(array.shape) / 1.75)
     else:
