@@ -118,6 +118,7 @@ class Edge(dict, MutableMapping):
     def decompose_and_match(*args, **kwargs):
         pass
 
+    """
     def extract_subset(self, *args, **kwargs):
         self.compute_overlap()
 
@@ -136,7 +137,7 @@ class Edge(dict, MutableMapping):
         node = self.destination
         arr = node.geodata.read_array(pixels=pixels)
         node.extract_features(arr, xystart=xystart, *args, **kwargs)
-
+    """
     def symmetry_check(self):
         self.masks['symmetry'] = od.mirroring_test(self.matches)
 
@@ -167,10 +168,8 @@ class Edge(dict, MutableMapping):
         matches, mask = self.clean(clean_keys)
 
         # TODO: Homogeneous is horribly inefficient here, use Numpy array notation
-        s_keypoints = self.source.get_keypoint_coordinates(index=matches['source_idx'],
-                                                                 homogeneous=True)
-        d_keypoints = self.destination.get_keypoint_coordinates(index=matches['destination_idx'],
-                                                                homogeneous=True)
+        s_keypoints = self.get_keypoints('source', index=matches['source_idx'])
+        d_keypoints = self.get_keypoints('destination', index=matches['destination_idx'])
 
 
         # Replace the index with the matches index.
@@ -185,6 +184,10 @@ class Edge(dict, MutableMapping):
 
             # Set the initial state of the fundamental mask in the masks
             self.masks[maskname] = mask
+
+    def get_keypoints(self, node, index=None, homogeneous=True):
+        node = getattr(self, node)
+        return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
 
     def compute_fundamental_error(self, clean_keys=[]):
         """

@@ -63,11 +63,21 @@ class TestTwoImageMatching(unittest.TestCase):
         # Create fundamental matrix
         cg.compute_fundamental_matrices()
 
+        for s, d, e in cg.edges_iter(data=True):
+            assert isinstance(e['fundamental_matrix'], np.ndarray)
+            err = e.compute_fundamental_error(clean_keys=['fundamental'])
+            assert isinstance(err, pd.Series)
+            matches, _ = e.clean(clean_keys=['fundamental'])
+            assert matches.index.all() == err.index.all()
+                    
+
         # Apply AMNS
         cg.suppress(k=30, suppression_func=error)
 
         # Step: Compute subpixel offsets for candidate points
+        cg.subpixel_register(clean_keys=['suppression'], tiled=True)
         cg.subpixel_register(clean_keys=['suppression'])
+        
 
 
         # Step: And create a C object
