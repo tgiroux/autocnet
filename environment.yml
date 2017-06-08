@@ -1,4 +1,4 @@
-name: autocnet2
+name: autocnet
 channels:
   - conda-forge
   - jlaura
@@ -19,5 +19,5 @@ dependencies:
   - pip:
     - pillow
     - pvl
-    - pysal
+    - libpysal
     - protobuf

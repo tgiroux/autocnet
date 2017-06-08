@@ -2,9 +2,11 @@ import unittest
 from unittest.mock import Mock, MagicMock
 
 import ogr
+import numpy as np
 import pandas as pd
 from plio.io import io_gdal
 
+from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.examples import get_path
 from autocnet.graph.network import CandidateGraph
 from autocnet.utils.utils import array_to_poly
@@ -38,12 +40,8 @@ class TestEdge(unittest.TestCase):
                                                  'distance'])
         '''
 
-    def test_properties(self):
-        pass
-
     def test_masks(self):
         self.assertIsInstance(self.edge.masks, pd.DataFrame)
-
 
     def test_compute_fundamental_matrix(self):
         pass
@@ -247,3 +245,69 @@ class TestEdge(unittest.TestCase):
         for i in e.matches['vor_weights']:
             self.assertAlmostEquals(i, weights['vor_weights'][k])
             k += 1
+
+    def test_eq(self):
+        edge1 = edge.Edge()
+        edge2 = edge.Edge()
+        edge3 = edge.Edge()
+
+        # Test edges w/ different keys are not equal, ones with same keys are
+        edge1.__dict__["key"] = 1
+        edge2.__dict__["key"] = 1
+        edge3.__dict__["not_key"] = 1
+
+        self.assertTrue(edge1 == edge2)
+        self.assertFalse(edge1 == edge3)
+
+        # Test edges with same keys, but diff df values
+        edge1.__dict__["key"] = pd.DataFrame({'x': (0, 1, 2, 3, 4)})
+        edge2.__dict__["key"] = pd.DataFrame({'x': (0, 1, 2, 3, 4)})
+        edge3.__dict__["key"] = pd.DataFrame({'x': (0, 1, 2, 3, 5)})
+
+        self.assertTrue(edge1 == edge2)
+        self.assertFalse(edge1 == edge3)
+
+        # Test edges with same keys, but diff np array vals
+        # edge.__eq__ calls ndarray.all(), which checks that
+        # all values in an array eval to true
+        edge1.__dict__["key"] = np.array([True, True, True], dtype=np.bool)
+        edge2.__dict__["key"] = np.array([True, True, True], dtype=np.bool)
+        edge3.__dict__["key"] = np.array([True, True, False], dtype=np.bool)
+
+        self.assertTrue(edge1 == edge2)
+        self.assertFalse(edge1 == edge3)
+
+    def test_repr(self):
+        src = node.Node()
+        dst = node.Node()
+        masks = pd.DataFrame()
+
+        e = edge.Edge()
+        e.source = src
+        e.destination = dst
+
+        expected = """
+        Source Image Index: {}
+        Destination Image Index: {}
+        Available Masks: {}
+        """.format(src, dst, masks)
+
+        self.assertEqual(expected, e.__repr__())
+
+    def test_ratio_check(self):
+        # Matches is init to None
+        e = edge.Edge()
+
+        # If there are matches...
+        keypoint_matches = [[0, 0, 1, 4, 5],
+                            [0, 1, 1, 3, 5],
+                            [0, 2, 1, 2, 5],
+                            [0, 3, 1, 1, 5],
+                            [0, 4, 1, 0, 5]]
+
+        matches_df = pd.DataFrame(data=keypoint_matches, columns=['source_image', 'source_idx',
+                                                                  'destination_image', 'destination_idx', 'distance'])
+        e.matches = matches_df
+        expected = list(od.distance_ratio(matches_df))
+        e.ratio_check()
+        self.assertEqual(expected, list(e.masks["ratio"]))

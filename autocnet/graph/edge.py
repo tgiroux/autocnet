@@ -8,6 +8,7 @@ import pandas as pd
 from scipy.spatial.distance import cdist
 
 import autocnet
+from autocnet.graph.node import Node
 from autocnet.utils import utils
 from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.matcher import suppression_funcs as spf
@@ -78,22 +79,11 @@ class Edge(dict, MutableMapping):
     def masks(self):
         mask_lookup = {'fundamental': 'fundamental_matrix'}
         if not hasattr(self, '_masks'):
-            if self.matches is not None:
+            if isinstance(self.matches, pd.DataFrame):
                 self._masks = pd.DataFrame(True, columns=['symmetry'],
                                            index=self.matches.index)
             else:
                 self._masks = pd.DataFrame()
-        # If the mask is coming form another object that tracks
-        # state, dynamically draw the mask from the object.
-        for c in self._masks.columns:
-            if c in mask_lookup:
-                try:
-                    truncated_mask = getattr(self, mask_lookup[c]).mask
-                    self._masks[c] = False
-                    self._masks[c].iloc[truncated_mask.index] = truncated_mask
-                except Exception:
-                    #TODO: Get rid of state
-                    pass
         return self._masks
 
     @masks.setter
@@ -149,7 +139,6 @@ class Edge(dict, MutableMapping):
 
     def symmetry_check(self):
         self.masks['symmetry'] = od.mirroring_test(self.matches)
-
 
     def ratio_check(self, clean_keys=[], maskname='ratio', **kwargs):
         matches, mask = self.clean(clean_keys)
@@ -363,7 +352,7 @@ class Edge(dict, MutableMapping):
                      of mask keys to be used to reduce the total size
                      of the matches dataframe.
         """
-        if not hasattr(self, 'matches'):
+        if not isinstance(self.matches, pd.DataFrame):
             raise AttributeError('This edge does not yet have any matches computed.')
 
         matches, mask = self.clean(clean_keys)
@@ -493,7 +482,7 @@ class Edge(dict, MutableMapping):
                      Of strings used to apply masks to omit correspondences
 
         """
-        if self.matches is None:
+        if not isinstance(self.matches, pd.DataFrame):
             raise AttributeError('Matches have not been computed for this edge')
         voronoi = cg.vor(self, clean_keys, **kwargs)
         self.matches = pd.concat([self.matches, voronoi[1]['vor_weights']], axis=1)
@@ -506,3 +495,4 @@ class Edge(dict, MutableMapping):
         pixel space
         """
         self.overlap_latlon_coords, self["source_mbr"], self["destin_mbr"] = self.source.geodata.compute_overlap(self.destination.geodata, **kwargs)
+
