@@ -1,3 +1,4 @@
+from functools import wraps
 import warnings
 from collections import MutableMapping
 
@@ -8,13 +9,14 @@ from scipy.spatial.distance import cdist
 
 import autocnet
 from autocnet.utils import utils
-from autocnet.matcher import outlier_detector as od
+from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.matcher import suppression_funcs as spf
 from autocnet.matcher import subpixel as sp
 from autocnet.transformation import fundamental_matrix as fm
 from autocnet.transformation import homography as hm
 from autocnet.vis.graph_view import plot_edge, plot_node, plot_edge_decomposition
 from autocnet.cg import cg
+
 
 
 class Edge(dict, MutableMapping):
@@ -40,8 +42,11 @@ class Edge(dict, MutableMapping):
         self.destination = destination
         self['homography'] = None
         self['fundamental_matrix'] = None
-        self.matches = None
+        self.matches = pd.DataFrame()
+        self.masks = pd.DataFrame()
         self['weights'] = {}
+        self['source_mbr'] = None
+        self['destin_mbr'] = None
 
     def __repr__(self):
         return """
@@ -66,10 +71,10 @@ class Edge(dict, MutableMapping):
             elif isinstance(v, np.ndarray):
                 if not v.all() == o[k].all():
                     eq = False
-                    
+
         return eq
 
-    @property
+    """@property
     def masks(self):
         mask_lookup = {'fundamental': 'fundamental_matrix'}
         if not hasattr(self, '_masks'):
@@ -95,10 +100,7 @@ class Edge(dict, MutableMapping):
     def masks(self, v):
         column_name = v[0]
         boolean_mask = v[1]
-        self.masks[column_name] = boolean_mask
-
-    def decompose_and_match(*args, **kwargs):
-        pass
+        self.masks[column_name] = boolean_mask"""
 
     def match(self, k=2, **kwargs):
 
@@ -116,22 +118,44 @@ class Edge(dict, MutableMapping):
         """
         pass
 
+    def decompose(self):
+        """
+        Apply coupled decomposition to the images and
+        match identified sub-images
+        """
+        pass
+
+    def decompose_and_match(*args, **kwargs):
+        pass
+
+    def extract_subset(self, *args, **kwargs):
+        self.compute_overlap()
+
+        # Extract the source
+        minx, maxx, miny, maxy = self['source_mbr']
+        xystart = (minx, miny)
+        pixels=[minx, miny, maxx-minx, maxy-miny]
+        node = self.source
+        arr = node.geodata.read_array(pixels=pixels)
+        node.extract_features(arr, xystart=xystart, *args, **kwargs)
+
+        # Extract the destination
+        minx, maxx, miny, maxy = self['destin_mbr']
+        xystart = (minx, miny)
+        pixels=[minx, miny, maxx-minx, maxy-miny]
+        node = self.destination
+        arr = node.geodata.read_array(pixels=pixels)
+        node.extract_features(arr, xystart=xystart, *args, **kwargs)
+
     def symmetry_check(self):
-        if hasattr(self, 'matches'):
-            mask = od.mirroring_test(self.matches)
-            self.masks = ('symmetry', mask)
-        else:
-            raise AttributeError('No matches have been computed for this edge.')
+        self.masks['symmetry'] = od.mirroring_test(self.matches)
 
-    def ratio_check(self, clean_keys=[], **kwargs):
-        if hasattr(self, 'matches'):
-            matches, mask = self.clean(clean_keys)
-            distance_mask = od.distance_ratio(matches, **kwargs)
-            self.masks = ('ratio', distance_mask)
-        else:
-            raise AttributeError('No matches have been computed for this edge.')
 
-    def compute_fundamental_matrix(self, clean_keys=[], **kwargs):
+    def ratio_check(self, clean_keys=[], maskname='ratio', **kwargs):
+        matches, mask = self.clean(clean_keys)
+        self.masks[maskname] = od.distance_ratio(matches, **kwargs)
+
+    def compute_fundamental_matrix(self, clean_keys=[], maskname='fundamental', **kwargs):
         """
         Estimate the fundamental matrix (F) using the correspondences tagged to this
         edge.
@@ -151,9 +175,6 @@ class Edge(dict, MutableMapping):
         autocnet.transformation.transformations.FundamentalMatrix
 
         """
-        if not hasattr(self, 'matches'):
-            raise AttributeError('Matches have not been computed for this edge')
-            return
         matches, mask = self.clean(clean_keys)
 
         # TODO: Homogeneous is horribly inefficient here, use Numpy array notation
@@ -174,9 +195,38 @@ class Edge(dict, MutableMapping):
             mask[mask] = fmask
 
             # Set the initial state of the fundamental mask in the masks
-            self.masks = ('fundamental', mask)
+            self.masks[maskname] = mask
 
-    def compute_homography(self, method='ransac', clean_keys=[], pid=None, **kwargs):
+    def compute_fundamental_error(self, clean_keys=[]):
+        """
+        Given a fundamental matrix, compute the reprojective error between
+        a two sets of keypoints.
+
+        Parameters
+        ----------
+        clean_keys : list
+                     of string keys to masking arrays
+                     (created by calling outlier detection)
+
+        Returns
+        -------
+        error : pd.Series
+                of reprojective error indexed to the matches data frame
+        """
+        if self['fundamental_matrix'] is None:
+            warning.warn('No fundamental matrix has been compute for this edge.'
+            )
+        matches, masks = self.clean(clean_keys)
+
+        source_kps = self.source.get_keypoint_coordinates(index=matches['source_idx'])
+        destination_kps = self.destination.get_keypoint_coordinates(index=matches['destination_idx'])
+
+        error = fm.compute_fundamental_error(self['fundamental_matrix'], source_kps, destination_kps)
+
+        error = pd.Series(error, index=matches.index)
+        return error
+
+    def compute_homography(self, method='ransac', clean_keys=[], pid=None, maskname='homography', **kwargs):
         """
         For each edge in the (sub) graph, compute the homography
         Parameters
@@ -195,12 +245,6 @@ class Edge(dict, MutableMapping):
         mask : ndarray
                Boolean array of the outliers
         """
-
-        if hasattr(self, 'matches'):
-            matches = self.matches
-        else:
-            raise AttributeError('Matches have not been computed for this edge')
-
         matches, mask = self.clean(clean_keys)
 
         s_keypoints = self.source.get_keypoint_coordinates(index=matches['source_idx'])
@@ -210,7 +254,7 @@ class Edge(dict, MutableMapping):
 
         # Convert the truncated RANSAC mask back into a full length mask
         mask[mask] = hmask
-        self.masks = ('ransac', mask)
+        self.masks['homography'] = mask
 
     def subpixel_register(self, clean_keys=[], threshold=0.8,
                           template_size=19, search_size=53, max_x_shift=1.0,
@@ -288,19 +332,18 @@ class Edge(dict, MutableMapping):
         threshold_mask = self.matches['correlation'] >= threshold
 
         # Compute the mask for the point shifts that are too large
-        query_string = 'x_offset <= -{0} or x_offset >= {0} or y_offset <= -{1} or y_offset >= {1}'.format(max_x_shift,
-                                                                                                           max_y_shift)
+        query_string = 'x_offset <= -{0} or x_offset >= {0} or y_offset <= -{1} or y_offset >= {1}'.format(max_x_shift,max_y_shift)
         sp_shift_outliers = self.matches.query(query_string)
         shift_mask = pd.Series(True, index=self.matches.index)
         shift_mask.loc[sp_shift_outliers.index] = False
 
         # Generate the composite mask and write the masks to the mask data structure
         mask = threshold_mask & shift_mask
-        self.masks = ('shift', shift_mask)
-        self.masks = ('threshold', threshold_mask)
-        self.masks = ('subpixel', mask)
+        self.masks['shift'] = shift_mask
+        self.masks['threshold'] = threshold_mask
+        self.masks['subpixel'] = mask
 
-    def suppress(self, suppression_func=spf.correlation, clean_keys=[], **kwargs):
+    def suppress(self, suppression_func=spf.correlation, clean_keys=[], maskname='suppression', **kwargs):
         """
         Apply a disc based suppression algorithm to get a good spatial
         distribution of high quality points, where the user defines some
@@ -334,7 +377,7 @@ class Edge(dict, MutableMapping):
         smask, k = od.spatial_suppression(merged, domain, **kwargs)
 
         mask[mask] = smask
-        self.masks = ('suppression', mask)
+        self.masks[maskname] = mask
 
     def plot_source(self, ax=None, clean_keys=[], **kwargs):  # pragma: no cover
         matches, mask = self.clean(clean_keys=clean_keys)
@@ -417,9 +460,6 @@ class Edge(dict, MutableMapping):
                                    returns the overlap area
                                    covered by the keypoints
         """
-        if self.matches is None:
-            raise AttributeError('Edge needs to have features extracted and matched')
-            return
         matches, mask = self.clean(clean_keys)
         source_array = self.source.get_keypoint_coordinates(index=matches['source_idx']).values
 
@@ -458,24 +498,11 @@ class Edge(dict, MutableMapping):
         voronoi = cg.vor(self, clean_keys, **kwargs)
         self.matches = pd.concat([self.matches, voronoi[1]['vor_weights']], axis=1)
 
-    def decompose(self, maxiterations=3):
+
+
+    def compute_overlap(self, **kwargs):
         """
-        Apply coupled decomposition to the images and
-        match identified sub-images
-
-        Parameters
-        ----------
-        maxiterations : int
-                        The number of iterations. Appropriate values:
-
-                        | Number of megapixels | k |
-                        |----------------------|---|
-                        | m < 10               |1-2|
-                        | 10 < m < 30          | 3 |
-                        | 30 < m < 100         | 4 |
-                        | 100 < m < 1000       | 5 |
-                        | m > 1000             | 6 |
-
-
+        Estimate a source and destination minimum bounding rectangle, in
+        pixel space
         """
-        pass
+        self.overlap_latlon_coords, self["source_mbr"], self["destin_mbr"] = self.source.geodata.compute_overlap(self.destination.geodata, **kwargs)
