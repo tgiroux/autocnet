@@ -48,7 +48,7 @@ class TestTwoImageMatching(unittest.TestCase):
         self.assertEqual(1, cg.number_of_edges())
 
         # Step: Extract image data and attribute nodes
-        cg.extract_features(method='sift', extractor_parameters={"nfeatures":500})
+        cg.extract_features(extractor_method='sift', extractor_parameters={"nfeatures":500})
         for i, node in cg.nodes_iter(data=True):
             self.assertIn(node.nkeypoints, range(490, 510))
 
