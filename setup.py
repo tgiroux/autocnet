@@ -22,7 +22,7 @@ def setup_package():
         examples.add(glob_name)
 
     setup(
-        name = "plio",
+        name = "autocnet",
         version = VERSION,
         author = "Jay Laura",
         author_email = "jlaura@usgs.gov",
