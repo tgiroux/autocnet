@@ -46,11 +46,11 @@ def plot_graph(graph, ax=None, cmap='Spectral', labels=False, font_size=12, clus
             colors.append(cmap(0)[0])
 
     pos = nx.spring_layout(graph)
-    nx.draw_networkx_nodes(graph, pos)
-    nx.draw_networkx_edges(graph, pos)
+    nx.draw_networkx_nodes(graph, pos, ax=ax)
+    nx.draw_networkx_edges(graph, pos, ax=ax)
     if labels:
         labels = dict((i, d['image_name']) for i, d in graph.nodes_iter(data=True))
-        nx.draw_networkx_labels(graph, pos, labels, font_size=font_size)
+        nx.draw_networkx_labels(graph, pos, labels, font_size=font_size, ax=ax)
     ax.axis('off')
     return ax
 
