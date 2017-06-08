@@ -1,4 +1,5 @@
 import os
+import time
 import sys
 
 import pytest
@@ -157,3 +158,11 @@ def test_set_maxsize(graph):
     assert(graph.maxsize == maxsizes[12])
     with pytest.raises(KeyError):
         graph.maxsize = 7
+
+
+def test_update_data(graph):
+   ctime = graph.graph['modifieddate']
+   time.sleep(1)
+   graph._update_date()
+   ntime = graph.graph['modifieddate']
+   assert ctime != ntime

@@ -510,26 +510,6 @@ class Node(dict, MutableMapping):
         columns = ['point_id', 'point_type', 'serialnumber', 'measure_type', 'x', 'y', 'node_id']
         self.point_to_correspondence_df = pd.DataFrame(data, columns=columns)
 
-    def suppress(self, func=spf.response, **kwargs):
-        if not hasattr(self, 'keypoints'):
-            raise AttributeError('No keypoints extracted for this node.')
-
-        domain = self.handle.raster_size
-        self.keypoints['strength'] = self.keypoints.apply(func, axis=1)
-
-        if not hasattr(self, 'suppression'):
-            # Instantiate a suppression object and suppress keypoints
-            self.suppression = od.SpatialSuppression(self.keypoints, domain, **kwargs)
-            self.suppression.suppress()
-        else:
-            # Update the suppression object attributes and process
-            for k, v in kwargs.items():
-                if hasattr(self.suppression, k):
-                    setattr(self.suppression, k, v)
-            self.suppression.suppress()
-
-        self.masks['suppression'] = self.suppression.mask
-
     def coverage_ratio(self, clean_keys=[]):
         """
         Compute the ratio $area_{convexhull} / area_{total}$
@@ -570,7 +550,7 @@ class Node(dict, MutableMapping):
         mask : series
                     A boolean series to inflate back to the full match set
         """
-        if not hasattr(self, 'keypoints'):
+        if self.keypoints.empty:
             raise AttributeError('Keypoints have not been extracted for this node.')
         panel = self.masks
         mask = panel[clean_keys].all(axis=1)

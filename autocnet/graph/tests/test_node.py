@@ -107,3 +107,13 @@ class TestNode(object):
         node.extract_features(image, extractor_method='sift', extractor_parameters={'nfeatures': 10})
         coverage_percn = node.coverage()
         assert coverage_percn == pytest.approx(38.06139557, 2)
+
+    def test_clean(self, node):
+        with pytest.raises(AttributeError):
+            node._clean([])
+        node.keypoints = pd.DataFrame(np.arange(5))
+        node.masks = pd.DataFrame(np.array([[True, True, True, False, False],
+                                   [True, False, True, True, False]]).T,
+                                   columns=['a', 'b'])
+        matches, mask = node._clean(clean_keys=['a'])
+        assert mask.equals(pd.Series([True, True, True, False, False]))
