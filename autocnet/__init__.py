@@ -43,8 +43,6 @@ def cuda(enable=False, gpu=0):
             from autocnet.matcher.cuda_decompose import decompose_and_match
             Edge.decompose_and_match = decompose_and_match
 
-            # Outlier Detectors
-
         except Exception:
             warnings.warn('Failed to enable Cuda')
         return

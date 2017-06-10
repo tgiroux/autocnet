@@ -340,16 +340,22 @@ class Node(dict, MutableMapping):
         stepsize = tilesize - overlap
         if stepsize < 0:
             raise ValueError('Overlap can not be greater than tilesize.')
-
         # Compute the tiles
-        ystarts = range(0, array_size[1], stepsize)
-        ystops = range(tilesize, array_size[1], stepsize)
-        ytiles = list(zip(ystarts, ystops))
-        ytiles.append((ytiles[-1][0] + stepsize, array_size[1]))
-        xstarts = range(0, array_size[0], stepsize)
-        xstops = range(tilesize, array_size[0], stepsize)
-        xtiles = list(zip(xstarts, xstops))
-        xtiles.append((xtiles[-1][0] + stepsize, array_size[0]))
+        if tilesize >= array_size[1]:
+            ytiles = [(0, array_size[1])]
+        else:
+            ystarts = range(0, array_size[1], stepsize)
+            ystops = range(tilesize, array_size[1], stepsize)
+            ytiles = list(zip(ystarts, ystops))
+            ytiles.append((ytiles[-1][0] + stepsize, array_size[1]))
+        
+        if tilesize >= array_size[0]:
+            xtiles = [(0, array_size[0])]
+        else:
+            xstarts = range(0, array_size[0], stepsize)
+            xstops = range(tilesize, array_size[0], stepsize)
+            xtiles = list(zip(xstarts, xstops))
+            xtiles.append((xtiles[-1][0] + stepsize, array_size[0]))
         tiles = itertools.product(xtiles, ytiles)
 
         for tile in tiles:

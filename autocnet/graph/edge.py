@@ -92,7 +92,7 @@ class Edge(dict, MutableMapping):
         boolean_mask = v[1]
         self.masks[column_name] = boolean_mask"""
 
-    def match(self, k=2, **kwargs):
+    def match(self, k=2, overlap=False, **kwargs):
 
         """
         Given two sets of descriptors, utilize a FLANN (Approximate Nearest
@@ -105,8 +105,13 @@ class Edge(dict, MutableMapping):
         ----------
         k : int
             The number of neighbors to find
+
+        overlap : boolean
+                  Apply the matcher only to the overlapping area defined by
+                  the source_mbr and destin_mbr attributes (stored in the
+                  edge dict).
         """
-        pass
+        pass    
 
     def decompose(self):
         """
@@ -498,4 +503,3 @@ class Edge(dict, MutableMapping):
         pixel space
         """
         self.overlap_latlon_coords, self["source_mbr"], self["destin_mbr"] = self.source.geodata.compute_overlap(self.destination.geodata, **kwargs)
-

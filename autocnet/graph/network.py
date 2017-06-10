@@ -1,4 +1,5 @@
 import itertools
+import math
 import os
 from time import gmtime, strftime
 import warnings
@@ -247,6 +248,7 @@ class CandidateGraph(nx.Graph):
 
     def extract_features_with_tiling(self, tilesize=1000, overlap=500, *args, **kwargs): #pragma: no cover
         for i, node in self.nodes_iter(data=True):
+            print('Processing {}'.format(node['image_name']))
             node.extract_features_with_tiling(tilesize=tilesize, overlap=overlap, *args, **kwargs)
 
     def extract_subsets(self, *args, **kwargs):

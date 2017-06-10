@@ -2,7 +2,7 @@ import warnings
 
 import cudasift as cs
 
-def extract_features(array, nfeatures=None):
+def extract_features(array, nfeatures=None, **kwargs):
     """
     A custom docstring.
     """
@@ -12,7 +12,7 @@ def extract_features(array, nfeatures=None):
         warnings.warn('NFeatures specified with the CudaSift implementation.  Please ensure the distribution of keypoints is what you expect.')
 
     siftdata = cs.PySiftData(nfeatures)
-    cs.ExtractKeypoints(array, siftdata)
+    cs.ExtractKeypoints(array, siftdata, **kwargs)
     keypoints, descriptors = siftdata.to_data_frame()
     keypoints = keypoints[['x', 'y', 'scale', 'sharpness', 'edgeness', 'orientation', 'score', 'ambiguity']]
     # Set the columns that have unfilled values to zero to avoid confusion
