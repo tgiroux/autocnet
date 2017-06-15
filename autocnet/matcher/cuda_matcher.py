@@ -4,7 +4,7 @@ import cudasift as cs
 import numpy as np
 import pandas as pd
 
-def match(self, ratio=0.8, overlap=True, **kwargs):
+def match(self, ratio=0.8, overlap=False, **kwargs):
 
     """
     Apply a composite CUDA matcher and ratio check.  If this method is used,
@@ -29,7 +29,7 @@ def match(self, ratio=0.8, overlap=True, **kwargs):
         source_des = self.source.descriptors
 
         destin_kps = self.destination.get_keypoints()
-        destin_des = self.destination.get_keypoints()
+        destin_des = self.destination.descriptors
 
     s_siftdata = cs.PySiftData.from_data_frame(source_kps, source_des)
     d_siftdata = cs.PySiftData.from_data_frame(destin_kps, destin_des)
@@ -47,8 +47,10 @@ def match(self, ratio=0.8, overlap=True, **kwargs):
     df.columns = ['source_image', 'source_idx', 'destination_image',
 		    'destination_idx', 'score', 'ambiguity']
 
-    df['source_idx'].replace(sremap, inplace=True)
-    df['destination_idx'].replace(dremap, inplace=True)
+
+    if overlap:
+        df['source_idx'].replace(sremap, inplace=True)
+        df['destination_idx'].replace(dremap, inplace=True)
 
     # Set the matches and set the 'ratio' (ambiguity) mask
     self.matches = df
