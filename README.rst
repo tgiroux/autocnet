@@ -25,7 +25,7 @@ AutoCNet
 
 Automated sparse control network generation to support photogrammetric control of planetary image data.
 
-* Documentation: https://autocnet.readthedocs.org.
+* Documentation: https://usgs-astrogeology.github.io/autocnet/
 
 Installation Instructions
 -------------------------
@@ -37,6 +37,6 @@ We suggest using Anaconda Python to install Autocnet within a virtual environmen
   * ``conda create -n <your_environment_name> python=3 && source activate <your_environment_name>``
 1. Bring up a command line and add three channels to your conda config (``~/condarc``):
   * ``conda config --add channels conda-forge``
-  * ``conda condig --add channels jlaura``
+  * ``conda config --add channels jlaura``
   * ``conda config --add channels menpo``
 1. Finally, install autocnet: ``conda install -c jlaura autocnet-dev``

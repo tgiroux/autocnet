@@ -46,12 +46,12 @@ class TestThreeImageMatching(unittest.TestCase):
         for i, node, in cg.nodes_iter(data=True):
             self.assertIn(node.nkeypoints, range(490, 511))
 
-        cg.match_features(k=5)
+        cg.match(k=2)
         cg.symmetry_checks()
         cg.ratio_checks()
 
         cg.apply_func_to_edges("compute_homography", clean_keys=['symmetry', 'ratio'])
-        cg.compute_fundamental_matrices(clean_keys=['symmetry', 'ratio'])
+        cg.compute_fundamental_matrices(clean_keys=['symmetry', 'ratio'], reproj_threshold=3.0, method='ransac')
 
         # Step: And create a C object
         cg.generate_cnet(clean_keys=['symmetry', 'ratio', 'ransac'])

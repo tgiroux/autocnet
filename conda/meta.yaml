@@ -14,11 +14,9 @@ requirements:
     - cyvlfeat
     - pillow
     - matplotlib
-    - pysal
     - scipy
     - networkx
     - numexpr
-    - dill
     - cython
     - pyyaml
     - pysal
@@ -31,15 +29,12 @@ requirements:
     - cyvlfeat
     - pillow
     - matplotlib
-    - pysal
     - scipy
     - networkx
     - numexpr
-    - dill
     - cython
     - pyyaml
     - jupyter
-    - pysal
 
 test:
   imports:
