@@ -7,6 +7,7 @@ import pandas as pd
 from plio.io.io_gdal import GeoDataset
 from plio.io.isis_serial_number import generate_serial_number
 from scipy.misc import bytescale
+import shapley
 
 from autocnet.cg import cg
 from autocnet.control.control import Correspondence, Point
@@ -511,3 +512,10 @@ class Node(dict, MutableMapping):
         mask = panel[clean_keys].all(axis=1)
         matches = self._keypoints[mask]
         return matches, mask
+
+    def reproject_geom(self, coords):
+        reproj = []
+
+        for x, y in coords:
+            reproj.append(self.geodata.latlon_to_pixel(x, y))
+        return shapley.Polygon(reproj)

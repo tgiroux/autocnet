@@ -454,7 +454,7 @@ class Edge(dict, MutableMapping):
         """
         pass
 
-    def get_keypoints(self, node, clean_keys):
+    def get_keypoints(self, node, clean_keys, homogeneous=False):
         """
 
         Returns a list of keypoint coordinates that match the specified
@@ -513,5 +513,8 @@ class Edge(dict, MutableMapping):
         all_keypts = node.get_keypoints()
         # Return keypts @ masked indecies for the node
         masked_keypts = all_keypts.iloc[keypt_indices].sort_index()
+
+        if homogeneous:
+            masked_keypts['homogeneous'] = 1
 
         return masked_keypts

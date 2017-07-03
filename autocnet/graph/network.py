@@ -5,11 +5,13 @@ import warnings
 
 import networkx as nx
 import pandas as pd
+import shapely.geometry
 
 from plio.io import io_hdf, io_json
 from plio.utils import utils as io_utils
 from plio.io.io_gdal import GeoDataset
-from autocnet.cg.cg import vor
+from autocnet.cg.cg import geom_mask
+from autocnet.cg.cg import compute_voronoi
 from autocnet.graph import markov_cluster
 from autocnet.graph.edge import Edge
 from autocnet.graph.node import Node
@@ -706,7 +708,7 @@ class CandidateGraph(nx.Graph):
         else:
             return list(nx.find_cliques(self))
 
-    def compute_vor_weight(self, clean_keys):
+    def compute_weight(self, clean_keys):
         """
         Computes a voronoi weight for each edge in a given graph.
         Can function as is, but is slightly optimized for complete subgraphs.
@@ -715,6 +717,80 @@ class CandidateGraph(nx.Graph):
         ----------
         clean_keys : list
                      Strings used to apply masks to omit correspondences
-
         """
-        vor(self, clean_keys)
+        neighbors_dict = nx.degree(self)
+        if False in list(all(value == len(self.neighbors(self.nodes()[0])) for value in neighbors_dict.values())):
+            warnings.warn('The given graph is not complete and may yield garbage.')
+
+        intersect_gdf = self.compute_intersection(self.nodes()[0], self, clean_keys)
+        source_node = self.node[self.nodes()[0]]
+
+        for s, d, edge in self.edges_iter(data=True):
+            # Recompute the intersection if the source node of the n + 1 edge is different from the n edge
+            # I don't know if this check is necessary anymore
+            if s != source_node['node_id']:
+                source_node = edge.source
+                intersect_gdf = self.compute_intersection(self, source_node, clean_keys)
+
+            kps = edge.get_keypoints('source', clean_keys=clean_keys)[['x', 'y']]
+            reproj_geom = source_node.reproject_geom(intersect_gdf.query("overlaps_all == True").geometry.values[0].__geo_interface__['coordinates'][0])
+            initial_mask = geom_mask(kps, reproj_geom)
+
+            if (len(kps[initial_mask]) <= 0):
+                continue
+
+            kps['geometry'] = kps.apply(lambda x: shapely.geometry.Point(x['x'], x['y']), axis=1)
+            kps_mask = kps['geometry'][initial_mask].apply(lambda x: reproj_geom.contains(x))
+            voronoi_df = compute_voronoi(kps[initial_mask][kps_mask], reproj_geom, geometry=True)
+
+            edge['weights']['vor_weight'] = voronoi_df['weight']
+
+    def compute_intersection(self, source, clean_keys=[], ax = None):
+        """
+        Computes the intercetion of all images in a graph
+        based around a given source node
+
+        Parameters
+        ----------
+        source: object or int
+                    Either a networkx Node object or an integer
+
+        clean_keys : list
+                     Strings used to apply masks to omit correspondences
+        """
+        if type(source) is int:
+            source = self.node[source]
+
+        try:
+            source_poly = swkt.loads(source.geodata.footprint.GetGeometryRef(0).ExportToWkt())
+        except:
+            raise AttributeError()
+
+        source_gdf = gpd.GeoDataFrame({'geometry': [source_poly], 'source_node': [source['node_id']]})
+
+        proj_list = []
+        proj_nodes = []
+
+        # Begin iterating through the nodes in the graph excluding the source node
+        for s, d, edge in self.edges_iter(data=True):
+            if s == source['node_id']:
+                proj_poly = swkt.loads(edge.destination.geodata.footprint.GetGeometryRef(0).ExportToWkt())
+            elif d == source['node_id']:
+                proj_poly = swkt.loads(edge.source.geodata.footprint.GetGeometryRef(0).ExportToWkt())
+            else:
+                continue
+
+            proj_list.append(proj_poly)
+            proj_nodes.append(n)
+
+
+        proj_gdf = gpd.GeoDataFrame({'geometry': proj_list, 'proj_node': proj_nodes})
+
+        intersect_gdf = gpd.overlay(source_gdf, proj_gdf, how='intersection')
+        intersect_gdf['overlaps_all'] = intersect_gdf.geometry.apply(lambda x:proj_gdf.geometry.contains(scale(x, .9, .9)).all())
+
+        if len(intersect_gdf.query("overlaps_all == True")) <= 0:
+            new_poly = unary_union(intersect_gdf.geometry)
+            intersect_gdf.loc[len(intersect_gdf)] = [source['node_id'], source['node_id'], new_poly, True]
+
+        return intersect_gdf

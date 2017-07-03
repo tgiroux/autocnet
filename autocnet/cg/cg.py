@@ -8,9 +8,10 @@ import ogr
 
 from scipy.spatial import ConvexHull
 from scipy.spatial import Voronoi
+import shapely.geometry
 from shapely.geometry import Polygon, Point
 from shapely.affinity import scale
-from shapely.ops import unary_union
+# from shapely.ops import unary_union
 import cv2
 
 from autocnet.utils import utils
@@ -59,6 +60,19 @@ def convex_hull(points):
 
     hull = ConvexHull(points)
     return hull
+
+
+def geom_mask(keypoints, geom):
+    def _in_mbr(r, mbr):
+        if (mbr[0] <= r.x <= mbr[2]) and (mbr[1] <= r.y <= mbr[3]):
+            return True
+        else:
+            return False
+
+    mbr = geom.bounds
+    initial_mask = keypoints.apply(_in_mbr, axis=1, args=(mbr,))
+
+    return initial_mask
 
 
 def two_poly_overlap(poly1, poly2):
@@ -114,7 +128,7 @@ def get_area(poly1, poly2):
     return intersection_area
 
 
-def vor(graph, clean_keys, s=30):
+def compute_voronoi(keypoints, intersection=None, geometry=False, s=30):
         """
         Creates a voronoi diagram for all edges in a graph, and assigns a given
         weight to each edge. This is based around voronoi polygons generated
@@ -131,59 +145,55 @@ def vor(graph, clean_keys, s=30):
         s : int
             Offset for the corners of the image
         """
-        neighbors_dict = nx.degree(graph)
-        if not all(value == len(graph.neighbors(graph.nodes()[0])) for value in neighbors_dict.values()):
-            warnings.warn('The given graph is not complete and may yield garbage.')
+        vor_keypoints = []
 
-        intersection, proj_gdf, source_gdf = compute_intersection(graph, graph.nodes()[0], clean_keys)
+        keypoints.apply(lambda x: vor_keypoints.append((x['x'], x['y'])), axis = 1)
 
-        intersection_ind = intersection.query('overlaps_all == True').index.values[0]
+        if intersection is None:
+            keypoint_bounds = Polygon(vor_keypoints).bounds
+            min_bounding_box = shapely.geometry.box(keypoint_bounds[0], keypoint_bounds[1],
+                                                    keypoint_bounds[2], keypoint_bounds[3])
 
-        source_node = graph.nodes()[0]
-        for e in graph.edges():
-            # If the source node changes, change the projection space to match it
-            if e[0] != source_node:
-                source_node = e[0]
-                intersection, proj_gdf, source_gdf = compute_intersection(source_node, graph, clean_keys)
-                intersection_ind = intersection.query('overlaps_all == True').index.values[0]
+            scaled_coords = np.array(scale(min_bounding_box, s, s).exterior.coords)
+        else:
+            scaled_coords = np.array(scale(intersection, s, s).exterior.coords)
 
-            edge = graph.edge[e[0]][e[1]]
-            kps = edge.get_keypoints('source', clean_keys=clean_keys, homogeneous=True)
+        vor_keypoints = np.vstack((vor_keypoints, scaled_coords))
+        vor = Voronoi(vor_keypoints)
 
-            kps['geometry'] = kps.apply(lambda x: Point(x['x'], x['y']), axis=1)
-            kps.mask = kps['geometry'].apply(lambda x: intersection.geometry.contains(x).any())
+        # For weight computation
+        # Should move to its own method
+        if geometry:
+            voronoi_df = gpd.GeoDataFrame(data = keypoints, columns=['x', 'y', 'weight', 'geometry'])
+        else:
+            voronoi_df = gpd.GeoDataFrame(data = keypoints, columns=['x', 'y', 'weight'])
 
-            # Creates a mask for displaying the voronoi points
-            # Currently erronious and produces NaN values in place
-            # of true
-            # matches, mask = edge.clean(clean_keys = clean_keys)
-            # mask[mask] = kps.mask
-            # edge.masks = ('voronoi', mask)
+        i = 0
+        vor_points = np.asarray(vor.points)
+        for region in vor.regions:
+            region_point = vor_points[np.argwhere(vor.point_region==i)]
 
-            keypoints = []
-            kps[kps.mask].apply(lambda x: keypoints.append((x['x'], x['y'])), axis=1)
+            if not -1 in region:
+                polygon_points = [vor.vertices[i] for i in region]
 
-            scaled_coords = np.array(scale(source_gdf.geometry[0], s, s).exterior.coords)
-            keypoints = np.vstack((keypoints, scaled_coords))
+                if len(polygon_points) != 0:
+                    polygon = Polygon(polygon_points)
 
-            vor = Voronoi(keypoints)
-            voronoi_df = pd.DataFrame(data=kps, columns=['x', 'y', 'weight'])
+                    if intersection is not None:
+                        intersection_poly = polygon.intersection(intersection)
+                    else:
+                        intersection_poly = polygon.intersection(min_bounding_box)
 
-            i = 0
-            vor_points = np.asarray(vor.points)
-            for region in vor.regions:
-                region_point = vor_points[np.argwhere(vor.point_region==i)]
-                if -1 not in region:
-                    polygon_points = [vor.vertices[i] for i in region]
-                    if len(polygon_points) != 0:
-                        polygon = Polygon(polygon_points)
-                        poly_area = polygon.intersection(intersection.geometry[intersection_ind]).area
+                    voronoi_df.loc[(voronoi_df["x"] == region_point[0][0][0]) &
+                                   (voronoi_df["y"] == region_point[0][0][1]),
+                                   'weight'] = intersection_poly.area
+                    if geometry:
                         voronoi_df.loc[(voronoi_df["x"] == region_point[0][0][0]) &
                                        (voronoi_df["y"] == region_point[0][0][1]),
-                                       'weight'] = poly_area
-                i += 1
+                                       'geometry'] = intersection_poly
+            i += 1
 
-            edge['weights']['vor_weight'] = voronoi_df['weight']
+        return voronoi_df
 
 
 def compute_intersection(graph, source, clean_keys=[]):
