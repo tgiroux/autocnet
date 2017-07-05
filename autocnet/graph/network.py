@@ -4,8 +4,12 @@ from time import gmtime, strftime
 import warnings
 
 import networkx as nx
+import geopandas as gpd
 import pandas as pd
+import shapely.affinity
 import shapely.geometry
+import shapely.wkt as swkt
+import shapely.ops
 
 from plio.io import io_hdf, io_json
 from plio.utils import utils as io_utils
@@ -687,7 +691,7 @@ class CandidateGraph(nx.Graph):
         edges = [(u, v) for u, v, edge in self.edges_iter(data=True) if func(edge, *args, **kwargs)]
         return self.create_edge_subgraph(edges)
 
-    def compute_cliques(self, node_id=None):
+    def compute_cliques(self, node_id=None):  # pragma: no cover
         """
         Computes all maximum complete subgraphs for the given graph.
         If a node_id is given, method will return only the complete subgraphs that
@@ -696,7 +700,7 @@ class CandidateGraph(nx.Graph):
         Parameters
         ----------
         node_id : int
-                  Arbitrary integer value for a given node
+                       Integer value for a given node
 
         Returns
         -------
@@ -708,13 +712,16 @@ class CandidateGraph(nx.Graph):
         else:
             return list(nx.find_cliques(self))
 
-    def compute_weight(self, clean_keys):
+    def compute_weight(self, clean_keys, **kwargs):
         """
         Computes a voronoi weight for each edge in a given graph.
         Can function as is, but is slightly optimized for complete subgraphs.
 
         Parameters
         ----------
+        kwargs : dict
+                      keyword arguments that get passed to compute_voronoi
+
         clean_keys : list
                      Strings used to apply masks to omit correspondences
         """
@@ -722,12 +729,11 @@ class CandidateGraph(nx.Graph):
         if False in list(all(value == len(self.neighbors(self.nodes()[0])) for value in neighbors_dict.values())):
             warnings.warn('The given graph is not complete and may yield garbage.')
 
-        intersect_gdf = self.compute_intersection(self.nodes()[0], self, clean_keys)
-        source_node = self.node[self.nodes()[0]]
+        source_node = self.nodes(data=True)[0][1]
+        intersect_gdf = self.compute_intersection(self, source_node, clean_keys)
 
         for s, d, edge in self.edges_iter(data=True):
             # Recompute the intersection if the source node of the n + 1 edge is different from the n edge
-            # I don't know if this check is necessary anymore
             if s != source_node['node_id']:
                 source_node = edge.source
                 intersect_gdf = self.compute_intersection(self, source_node, clean_keys)
@@ -741,11 +747,11 @@ class CandidateGraph(nx.Graph):
 
             kps['geometry'] = kps.apply(lambda x: shapely.geometry.Point(x['x'], x['y']), axis=1)
             kps_mask = kps['geometry'][initial_mask].apply(lambda x: reproj_geom.contains(x))
-            voronoi_df = compute_voronoi(kps[initial_mask][kps_mask], reproj_geom, geometry=True)
+            voronoi_df = compute_voronoi(kps[initial_mask][kps_mask], reproj_geom, **kwargs)
 
             edge['weights']['vor_weight'] = voronoi_df['weight']
 
-    def compute_intersection(self, source, clean_keys=[], ax = None):
+    def compute_intersection(self, source, clean_keys=[]):
         """
         Computes the intercetion of all images in a graph
         based around a given source node
@@ -753,44 +759,47 @@ class CandidateGraph(nx.Graph):
         Parameters
         ----------
         source: object or int
-                    Either a networkx Node object or an integer
+                     Either a networkx Node object or an integer
 
         clean_keys : list
-                     Strings used to apply masks to omit correspondences
+                           Strings used to apply masks to omit correspondences
+
+        Returns
+        -------
+        intersect_gdf : dataframe
+                               A geopandas dataframe of intersections for all images
+                               that overlap with the source node. Also includes the common
+                               overlap for all images in the source node.
         """
         if type(source) is int:
             source = self.node[source]
-
-        try:
-            source_poly = swkt.loads(source.geodata.footprint.GetGeometryRef(0).ExportToWkt())
-        except:
-            raise AttributeError()
+        # May want to use a try except block here, but what error to raise?
+        source_poly = swkt.loads(source.geodata.footprint.GetGeometryRef(0).ExportToWkt())
 
         source_gdf = gpd.GeoDataFrame({'geometry': [source_poly], 'source_node': [source['node_id']]})
 
-        proj_list = []
-        proj_nodes = []
+        proj_gdf = gpd.GeoDataFrame(columns=['geometry', 'proj_node'])
 
-        # Begin iterating through the nodes in the graph excluding the source node
+        # Begin iterating through the edges in the graph that contain the source
         for s, d, edge in self.edges_iter(data=True):
+            # May want to use a try except block here, but what error to raise?
             if s == source['node_id']:
                 proj_poly = swkt.loads(edge.destination.geodata.footprint.GetGeometryRef(0).ExportToWkt())
+                proj_gdf.loc[len(proj_gdf)] = [proj_poly, d]
             elif d == source['node_id']:
                 proj_poly = swkt.loads(edge.source.geodata.footprint.GetGeometryRef(0).ExportToWkt())
+                proj_gdf.loc[len(proj_gdf)] = [proj_poly, s]
             else:
                 continue
 
-            proj_list.append(proj_poly)
-            proj_nodes.append(n)
-
-
-        proj_gdf = gpd.GeoDataFrame({'geometry': proj_list, 'proj_node': proj_nodes})
-
+        # Overlay the all geometry and find the one geometry element that overlaps all of the images
         intersect_gdf = gpd.overlay(source_gdf, proj_gdf, how='intersection')
-        intersect_gdf['overlaps_all'] = intersect_gdf.geometry.apply(lambda x:proj_gdf.geometry.contains(scale(x, .9, .9)).all())
+        intersect_gdf['overlaps_all'] = intersect_gdf.geometry.apply(lambda x:proj_gdf.geometry.contains(shapely.affinity.scale(x, .9, .9)).all())
 
+        # If there is no polygon that overlaps all of the images, union all of the polygons into one large
+        # polygon that does overlap all of the images
         if len(intersect_gdf.query("overlaps_all == True")) <= 0:
-            new_poly = unary_union(intersect_gdf.geometry)
+            new_poly = shapely.ops.unary_union(intersect_gdf.geometry)
             intersect_gdf.loc[len(intersect_gdf)] = [source['node_id'], source['node_id'], new_poly, True]
 
         return intersect_gdf
