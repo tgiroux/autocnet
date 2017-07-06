@@ -25,7 +25,7 @@ AutoCNet
 
 Automated sparse control network generation to support photogrammetric control of planetary image data.
 
-* Documentation: https://autocnet.readthedocs.org.
+* Documentation: https://usgs-astrogeology.github.io/autocnet/
 
 Installation Instructions
 -------------------------
