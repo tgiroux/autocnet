@@ -1,4 +1,5 @@
 import os
+import time
 import sys
 
 import pytest
@@ -61,23 +62,7 @@ def test_connected_subgraphs(graph, disconnected_graph):
     subgraph_list = graph.connected_subgraphs()
     assert len(subgraph_list) == 1
 
-def test_save_load_features(tmpdir, graph):
-    # Create the graph and save the features
-    graph = graph.copy()
-    graph.extract_features(extractor_parameters={'nfeatures': 10})
-    allout = tmpdir.join("all_out.hdf")
-    oneout = tmpdir.join("one_out.hdf")
-
-    graph.save_features(allout.strpath, format='hdf')
-    graph.save_features(oneout.strpath, nodes=[1], format='hdf')
-
-    graph_no_features = graph.copy()
-    graph_no_features.load_features(allout.strpath, nodes=[1], format='hdf')
-    assert graph.node[1].get_keypoints().all().all() == graph_no_features.node[1].get_keypoints().all().all()
-
 def test_filter(graph):
-    def edge_func(edge):
-        return edge.matches is not None and hasattr(edge, 'matches')
     graph = graph.copy()
     test_sub_graph = graph.create_node_subgraph([0, 1])
 
@@ -85,7 +70,7 @@ def test_filter(graph):
     test_sub_graph.match(k=2)
 
     filtered_nodes = graph.filter_nodes(lambda node: node.descriptors is not None)
-    filtered_edges = graph.filter_edges(edge_func)
+    filtered_edges = graph.filter_edges(lambda edge: edge.matches.empty is not True)
 
     assert filtered_nodes.number_of_nodes() == test_sub_graph.number_of_nodes()
     assert filtered_edges.number_of_edges() == test_sub_graph.number_of_edges()
@@ -165,3 +150,19 @@ def test_apply_func_to_edges(graph):
 
     assert not graph[0][2].masks['symmetry'].all()
     assert not graph[0][1].masks['symmetry'].all()
+
+def test_set_maxsize(graph):
+    maxsizes = network.MAXSIZE
+    assert(graph.maxsize == maxsizes[0])
+    graph.maxsize = 12
+    assert(graph.maxsize == maxsizes[12])
+    with pytest.raises(KeyError):
+        graph.maxsize = 7
+
+
+def test_update_data(graph):
+   ctime = graph.graph['modifieddate']
+   time.sleep(1)
+   graph._update_date()
+   ntime = graph.graph['modifieddate']
+   assert ctime != ntime
