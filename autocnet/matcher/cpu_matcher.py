@@ -8,7 +8,7 @@ FLANN_INDEX_KDTREE = 1  # Algorithm to set centers,
 DEFAULT_FLANN_PARAMETERS = dict(algorithm=FLANN_INDEX_KDTREE, trees=3)
 
 
-def match(self, k=2, overlap=False, **kwargs):
+def match(self, k=2, overlap=[], **kwargs):
     """
     Given two sets of descriptors, utilize a FLANN (Approximate Nearest
     Neighbor KDTree) matcher to find the k nearest matches.  Nearness is
@@ -85,8 +85,8 @@ def match(self, k=2, overlap=False, **kwargs):
         kwargs.pop('aidx')
     elif overlap:
         # Query the source keypoints for those in the MBR
-        source_mbr = self['source_mbr']
-        query_result = self.source.keypoints.query()
+        source_mbr = overlap[0]
+        query_result = self.source.keypoints.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*source_mbr))
         aidx = query_result.index
     else:
         aidx = None
@@ -95,8 +95,8 @@ def match(self, k=2, overlap=False, **kwargs):
         bidx = kwargs['bidx']
         kwargs.pop('bidx')
     elif overlap:
-        destin_mbr = self['destin_mbr']
-        query_result = self.destination.keypoints.query()
+        destin_mbr = overlap[1]
+        query_result = self.destination.keypoints.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*destin_mbr))
         bidx = query_result.index
     else:
         bidx = None
@@ -105,7 +105,6 @@ def match(self, k=2, overlap=False, **kwargs):
     # Swap the indices since mono_matches is generic and source/destin are
     # swapped
     mono_matches(self.destination, self.source, aidx=bidx, bidx=aidx, **kwargs)
-
     self.matches.sort_values(by=['distance'])
 
 

@@ -54,7 +54,7 @@ class TestNode(object):
         node.extract_features_with_downsampling(5,
                                                 extractor_parameters={'nfeatures':10})
 
-        assert len(node.keypoints) == 10
+        assert len(node.keypoints) in range(8,12)
         assert node.keypoints['x'].max() > 500
 
 

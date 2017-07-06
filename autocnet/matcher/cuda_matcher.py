@@ -4,7 +4,7 @@ import cudasift as cs
 import numpy as np
 import pandas as pd
 
-def match(self, ratio=0.8, overlap=False, **kwargs):
+def match(self, ratio=0.8, overlap=[], **kwargs):
 
     """
     Apply a composite CUDA matcher and ratio check.  If this method is used,
@@ -15,12 +15,14 @@ def match(self, ratio=0.8, overlap=False, **kwargs):
     """
 
     if overlap:
-        source_kps = self.source.keypoints.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*self['source_mbr']))
+        source_overlap = overlap[0]
+        source_kps = self.source.keypoints.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*source_overlap))
         idx = source_kps.index
         sremap = {k:v for k, v in enumerate(idx)}
         source_des = self.source.descriptors[idx]
 
-        destin_kps = self.destination.keypoints.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*self['destin_mbr']))
+        destin_overlap = overlap[1]
+        destin_kps = self.destination.keypoints.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*destin_overlap))
         idx = destin_kps.index
         dremap = {k:v for k, v in enumerate(idx)}
         destin_des = self.destination.descriptors[idx]

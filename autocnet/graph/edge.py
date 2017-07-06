@@ -92,7 +92,7 @@ class Edge(dict, MutableMapping):
         boolean_mask = v[1]
         self.masks[column_name] = boolean_mask"""
 
-    def match(self, k=2, overlap=False, **kwargs):
+    def match(self, k=2, **kwargs):
 
         """
         Given two sets of descriptors, utilize a FLANN (Approximate Nearest
@@ -113,6 +113,14 @@ class Edge(dict, MutableMapping):
         """
         pass    
 
+    def match_overlap(self, k=2, **kwargs):
+        """
+        Given two sets of descriptors, apply the matcher with the
+        source and destination overlaps.
+        """
+        overlaps = [self['source_mbr'], self['destin_mbr']]
+        self.match(k=k, overlap=overlaps, **kwargs)
+        
     def decompose(self):
         """
         Apply coupled decomposition to the images and
