@@ -54,14 +54,14 @@ class TestThreeImageMatching(unittest.TestCase):
         cg.compute_fundamental_matrices(clean_keys=['symmetry', 'ratio'], reproj_threshold=3.0, method='ransac')
 
         # Step: And create a C object
-        cg.generate_cnet(clean_keys=['symmetry', 'ratio', 'ransac'])
+        cg.generate_cnet(clean_keys=['symmetry', 'ratio', 'fundamental'])
 
         # Step: Create a fromlist to go with the cnet and write it to a file
         filelist = cg.to_filelist()
         write_filelist(filelist, 'TestThreeImageMatching_fromlist.lis')
 
         # Step: Create a correspondence network
-        cg.generate_cnet(clean_keys=['ransac'], deepen=True)
+        cg.generate_cnet(clean_keys=['fundamental'], deepen=True)
 
         to_isis('TestThreeImageMatching.net', cg.cn, mode='wb',
                 networkid='TestThreeImageMatching', targetname='Moon')

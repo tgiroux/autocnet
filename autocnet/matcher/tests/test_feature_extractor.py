@@ -7,7 +7,7 @@ import cv2
 
 import sys
 
-from .. import feature_extractor
+from .. import cpu_extractor
 from plio.io import io_gdal
 
 
@@ -24,22 +24,22 @@ class TestFeatureExtractor(unittest.TestCase):
                           "sigma": 1.6}
 
     def test_extract_features(self):
-        features, descriptors = feature_extractor.extract_features(self.data_array,
-                                                                   method='sift',
+        features, descriptors = cpu_extractor.extract_features(self.data_array,
+                                                                   extractor_method='sift',
                                                                    extractor_parameters=self.parameters)
         self.assertEquals(len(features), 10)
 
     def test_extract_vlfeat(self):
-        kps, descriptors = feature_extractor.extract_features(self.data_array,
-                                                              method='vlfeat',
+        kps, descriptors = cpu_extractor.extract_features(self.data_array,
+                                                              extractor_method='vlfeat',
                                                               extractor_parameters={})
         self.assertIsInstance(kps, pd.DataFrame)
         self.assertEqual(descriptors.dtype, np.float32)
 
     def test_extract_vlfeat_without(self):
-        feature_extractor.vlfeat = False
+        cpu_extractor.vlfeat = False
         with self.assertRaises(ImportError):
-            kps, descriptors = feature_extractor.extract_features(self.data_array,
-                                                                  method='vlfeat',
+            kps, descriptors = cpu_extractor.extract_features(self.data_array,
+                                                                  extractor_method='vlfeat',
                                                                   extractor_parameters={})
-        feature_extractor.vlfeat = True
+        cpu_extractor.vlfeat = True

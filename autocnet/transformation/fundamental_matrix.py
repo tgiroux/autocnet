@@ -136,7 +136,7 @@ def update_fundamental_mask(F, x1, x2, threshold=1.0, index=None, method='reproj
     else:
         warnings.warn('Unknown error method.  Options are "reprojection" or "fundamental".')
     mask = pd.DataFrame(np.abs(error) <= threshold, index=index, columns=['fundamental'])
-    if index != None:
+    if index is not None:
         mask.index = index
 
     return mask

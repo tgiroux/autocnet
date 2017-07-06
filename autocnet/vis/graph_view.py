@@ -4,6 +4,13 @@ import networkx as nx
 from matplotlib import pyplot as plt
 import matplotlib
 
+from scipy.misc import imresize
+
+def downsample(array, amount):
+    return imresize(array,
+                      (int(array.shape[0] / amount),
+                      int(array.shape[1] / amount)),
+                      interp='lanczos')
 
 def plot_graph(graph, ax=None, cmap='Spectral', labels=False, font_size=12, clusters=None, **kwargs):
     """
@@ -39,16 +46,16 @@ def plot_graph(graph, ax=None, cmap='Spectral', labels=False, font_size=12, clus
             colors.append(cmap(0)[0])
 
     pos = nx.spring_layout(graph)
-    nx.draw_networkx_nodes(graph, pos)
-    nx.draw_networkx_edges(graph, pos)
+    nx.draw_networkx_nodes(graph, pos, ax=ax)
+    nx.draw_networkx_edges(graph, pos, ax=ax)
     if labels:
         labels = dict((i, d['image_name']) for i, d in graph.nodes_iter(data=True))
-        nx.draw_networkx_labels(graph, pos, labels, font_size=font_size)
+        nx.draw_networkx_labels(graph, pos, labels, font_size=font_size, ax=ax)
     ax.axis('off')
     return ax
 
 
-def plot_node(node, ax=None, clean_keys=[], index_mask=None, **kwargs):
+def plot_node(node, ax=None, clean_keys=[], index_mask=None, downsampling=1, **kwargs):
     """
     Plot the array and keypoints for a given node.
 
@@ -82,6 +89,11 @@ def plot_node(node, ax=None, clean_keys=[], index_mask=None, **kwargs):
         kwargs.pop('band', None)
 
     array = node.get_array(band)
+
+    if isinstance(downsampling, bool):
+        downsampling = node['downsample_amount']
+
+    array = downsample(array, downsampling)
 
     ax.set_title(node['image_name'])
     ax.margins(tight=True)
@@ -182,7 +194,7 @@ def plot_edge_decomposition(edge, ax=None, clean_keys=[], image_space=100,
 
     return ax
 
-def plot_edge(edge, ax=None, clean_keys=[], image_space=100,
+def plot_edge(edge, ax=None, clean_keys=[], image_space=100, downsampling=1,
               scatter_kwargs={}, line_kwargs={}, image_kwargs={}):
     """
     Plot the correspondences for a given edge
@@ -200,6 +212,8 @@ def plot_edge(edge, ax=None, clean_keys=[], image_space=100,
 
     image_space : int
                   The number of pixels to insert between the images
+
+    downsample : bool
 
     scatter_kwargs : dict
                      of MatPlotLib arguments to be applied to the scatter plots
@@ -227,9 +241,20 @@ def plot_edge(edge, ax=None, clean_keys=[], image_space=100,
     ax.axis('off')
 
     # Image plotting
+    if isinstance(downsampling, bool):
+        downsample_source = edge.source['downsample_amount']
+    else:
+        downsample_source = downsampling
     source_array = edge.source.get_array()
-    destination_array = edge.destination.get_array()
+    source_array = downsample(source_array, downsample_source)
 
+    if isinstance(downsampling, bool):
+        downsample_destin = edge.destination['downsample_amount']
+    else:
+        downsample_destin = downsampling
+    destination_array = edge.destination.get_array()
+    destination_array = downsample(destination_array, downsample_destin)
+    
     s_shape = source_array.shape
     d_shape = destination_array.shape
 
