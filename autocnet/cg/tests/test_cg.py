@@ -60,10 +60,16 @@ class TestArea(unittest.TestCase):
         self.assertAlmostEquals(voronoi_gdf.weight[3], 7.5)
         self.assertAlmostEquals(voronoi_gdf.weight[4], 13.5)
 
+        voronoi_gdf = cg.compute_voronoi(keypoints, geometry=True)
+        self.assertAlmostEquals(voronoi_gdf.geometry[0].area, 12.0)
+        self.assertAlmostEquals(voronoi_gdf.geometry[1].area, 13.5)
+        self.assertAlmostEquals(voronoi_gdf.geometry[2].area, 7.5)
+        self.assertAlmostEquals(voronoi_gdf.geometry[3].area, 7.5)
+        self.assertAlmostEquals(voronoi_gdf.geometry[4].area, 13.5)
+
         voronoi_inter_gdf = cg.compute_voronoi(keypoints, intersection)
         self.assertAlmostEquals(voronoi_inter_gdf.weight[0], 22.5)
         self.assertAlmostEquals(voronoi_inter_gdf.weight[1], 26.25)
         self.assertAlmostEquals(voronoi_inter_gdf.weight[2], 37.5)
         self.assertAlmostEquals(voronoi_inter_gdf.weight[3], 37.5)
         self.assertAlmostEquals(voronoi_inter_gdf.weight[4], 26.25)
-

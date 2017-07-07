@@ -235,8 +235,7 @@ def test_intersection():
         e.source = cang.node[s]
         e.destination = cang.node[d]
 
-    subgraph = cang.create_node_subgraph([0, 1, 2, 3, 4, 5, 6, 7])
-    intersect_gdf = subgraph.compute_intersection(3)
+    intersect_gdf = cang.compute_intersection(3)
 
     # Test the correct areas were found
     assert intersect_gdf.geometry[0].area == 7.5

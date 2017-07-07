@@ -513,7 +513,21 @@ class Node(dict, MutableMapping):
         matches = self._keypoints[mask]
         return matches, mask
 
-    def reproject_geom(self, coords):  # pragma: no cover
+    def reproject_geom(self, coords):
+        """
+        Reprojects a set of latlon coordinates into pixel space using the nodes
+        geodata. These are then returned as a shapely polygon
+
+        Parameters
+        ----------
+        coords : ndarray
+                      (n, 2) array of latlon coordinates
+
+        Returns
+        ----------
+        : object
+          A shapely polygon object made using the reprojected coordinates
+        """
         reproj = []
 
         for x, y in coords:

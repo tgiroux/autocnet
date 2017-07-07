@@ -62,7 +62,7 @@ def convex_hull(points):
     return hull
 
 
-def geom_mask(keypoints, geom):
+def geom_mask(keypoints, geom): # ADDED
     """
     Masks any points that are outside of the bounds of the given
     geometry.
@@ -141,7 +141,7 @@ def get_area(poly1, poly2):
     return intersection_area
 
 
-def compute_voronoi(keypoints, intersection=None, geometry=False, s=30):
+def compute_voronoi(keypoints, intersection=None, geometry=False, s=30): # ADDED
         """
         Creates a voronoi diagram for all edges in a graph, and assigns a given
         weight to each edge. This is based around voronoi polygons generated
@@ -188,10 +188,7 @@ def compute_voronoi(keypoints, intersection=None, geometry=False, s=30):
                 if len(polygon_points) != 0:
                     polygon = Polygon(polygon_points)
 
-                    if intersection is not None:
-                        intersection_poly = polygon.intersection(intersection)
-                    else:
-                        intersection_poly = polygon.intersection(min_bounding_box)
+                    intersection_poly = polygon.intersection(intersection)
 
                     voronoi_df.loc[(voronoi_df["x"] == region_point[0][0][0]) &
                                    (voronoi_df["y"] == region_point[0][0][1]),

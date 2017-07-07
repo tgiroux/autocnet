@@ -6,6 +6,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+import shapely.geometry
 
 from autocnet.examples import get_path
 from plio.io.io_gdal import GeoDataset
@@ -74,3 +75,18 @@ class TestNode(unittest.TestCase):
         coverage_percn = self.node.coverage()
 
         self.assertAlmostEqual(coverage_percn, 38.06139557)
+
+    def test_reproj_geom(self):
+        img = get_path('AS15-M-0412_sub4.cub')
+        cub_node = node.Node(image_name='AS15-M-0412_sub4.cub',
+                             image_path=img)
+
+        envelope = cub_node.geodata.footprint.GetEnvelope()
+        coord_list = [(envelope[0], envelope[1]), (envelope[2], envelope[1]),
+                             (envelope[2], envelope[3]), (envelope[0], envelope[3])]
+
+        reproj_geom = cub_node.reproject_geom(coord_list)
+        self.assertEqual(reproj_geom.bounds[0], 5735)
+        self.assertEqual(reproj_geom.bounds[1], 5559)
+        self.assertEqual(reproj_geom.bounds[2], 23798)
+        self.assertEqual(reproj_geom.bounds[3], 27315)
