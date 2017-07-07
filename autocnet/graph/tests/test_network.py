@@ -71,25 +71,7 @@ def test_connected_subgraphs(graph, disconnected_graph):
     subgraph_list = graph.connected_subgraphs()
     assert len(subgraph_list) == 1
 
-<<<<<<< HEAD
 
-def test_save_load_features(tmpdir, graph):
-    # Create the graph and save the features
-    graph = graph.copy()
-    graph.extract_features(extractor_parameters={'nfeatures': 10})
-    allout = tmpdir.join("all_out.hdf")
-    oneout = tmpdir.join("one_out.hdf")
-
-    graph.save_features(allout.strpath, format='hdf')
-    graph.save_features(oneout.strpath, nodes=[1], format='hdf')
-
-    graph_no_features = graph.copy()
-    graph_no_features.load_features(allout.strpath, nodes=[1], format='hdf')
-    assert graph.node[1].get_keypoints().all().all() == graph_no_features.node[1].get_keypoints().all().all()
-
-
-=======
->>>>>>> 1788194d709d73bf22d843752991d8c6dad9f87a
 def test_filter(graph):
     graph = graph.copy()
     test_sub_graph = graph.create_node_subgraph([0, 1])
@@ -184,7 +166,6 @@ def test_apply_func_to_edges(graph):
     assert not graph[0][2].masks['symmetry'].all()
     assert not graph[0][1].masks['symmetry'].all()
 
-<<<<<<< HEAD
 
 def test_intersection():
     # Generate the footprints for the mock nodes
@@ -248,7 +229,8 @@ def test_intersection():
     assert intersect_gdf.geometry[4].area == 21.25
     # Check if the correct poly was determined to overlap all other images
     assert intersect_gdf.overlaps_all[4] == True
-=======
+
+
 def test_set_maxsize(graph):
     maxsizes = network.MAXSIZE
     assert(graph.maxsize == maxsizes[0])
@@ -264,4 +246,4 @@ def test_update_data(graph):
    graph._update_date()
    ntime = graph.graph['modifieddate']
    assert ctime != ntime
->>>>>>> 1788194d709d73bf22d843752991d8c6dad9f87a
+

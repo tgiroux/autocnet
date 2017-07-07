@@ -7,9 +7,8 @@ import numpy as np
 import pandas as pd
 from plio.io.io_gdal import GeoDataset
 from plio.io.isis_serial_number import generate_serial_number
-from scipy.misc import bytescale
+from scipy.misc import bytescale, imresize
 from shapely.geometry import Polygon
-
 
 from autocnet.cg import cg
 from autocnet.control.control import Correspondence, Point
