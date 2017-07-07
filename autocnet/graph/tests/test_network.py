@@ -1,4 +1,5 @@
 import os
+import time
 import sys
 
 import pytest
@@ -70,6 +71,7 @@ def test_connected_subgraphs(graph, disconnected_graph):
     subgraph_list = graph.connected_subgraphs()
     assert len(subgraph_list) == 1
 
+<<<<<<< HEAD
 
 def test_save_load_features(tmpdir, graph):
     # Create the graph and save the features
@@ -86,9 +88,9 @@ def test_save_load_features(tmpdir, graph):
     assert graph.node[1].get_keypoints().all().all() == graph_no_features.node[1].get_keypoints().all().all()
 
 
+=======
+>>>>>>> 1788194d709d73bf22d843752991d8c6dad9f87a
 def test_filter(graph):
-    def edge_func(edge):
-        return edge.matches is not None and hasattr(edge, 'matches')
     graph = graph.copy()
     test_sub_graph = graph.create_node_subgraph([0, 1])
 
@@ -96,7 +98,7 @@ def test_filter(graph):
     test_sub_graph.match(k=2)
 
     filtered_nodes = graph.filter_nodes(lambda node: node.descriptors is not None)
-    filtered_edges = graph.filter_edges(edge_func)
+    filtered_edges = graph.filter_edges(lambda edge: edge.matches.empty is not True)
 
     assert filtered_nodes.number_of_nodes() == test_sub_graph.number_of_nodes()
     assert filtered_edges.number_of_edges() == test_sub_graph.number_of_edges()
@@ -182,6 +184,7 @@ def test_apply_func_to_edges(graph):
     assert not graph[0][2].masks['symmetry'].all()
     assert not graph[0][1].masks['symmetry'].all()
 
+<<<<<<< HEAD
 
 def test_intersection():
     # Generate the footprints for the mock nodes
@@ -245,3 +248,20 @@ def test_intersection():
     assert intersect_gdf.geometry[4].area == 21.25
     # Check if the correct poly was determined to overlap all other images
     assert intersect_gdf.overlaps_all[4] == True
+=======
+def test_set_maxsize(graph):
+    maxsizes = network.MAXSIZE
+    assert(graph.maxsize == maxsizes[0])
+    graph.maxsize = 12
+    assert(graph.maxsize == maxsizes[12])
+    with pytest.raises(KeyError):
+        graph.maxsize = 7
+
+
+def test_update_data(graph):
+   ctime = graph.graph['modifieddate']
+   time.sleep(1)
+   graph._update_date()
+   ntime = graph.graph['modifieddate']
+   assert ctime != ntime
+>>>>>>> 1788194d709d73bf22d843752991d8c6dad9f87a

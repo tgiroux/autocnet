@@ -340,25 +340,4 @@ def array_to_poly(array):
     geom = {"type": "Polygon", "coordinates": [geom_array]}
     poly = ogr.CreateGeometryFromJson(json.dumps(geom))
     return poly
-
-
-def reproj_point(H, corner):
-    """
-    Reproject a pixel in one image into another image
-
-    Parameters
-    ----------
-    H : object
-        (3,3) ndarray or Homography object
-
-    corner : iterable
-             A 2 element iterable in the form x, y
-    """
-    if len(corner) == 2:
-        coords = np.array([corner[0], corner[1], 1])
-    elif len(corner) == 3:
-        coords = np.asarray(corner)
-        coords *= coords[-1]
-    return H.dot(coords)
-
-
+    

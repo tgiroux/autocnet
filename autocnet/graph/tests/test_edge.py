@@ -1,13 +1,12 @@
 import unittest
-from unittest.mock import Mock
-from unittest.mock import MagicMock
+from unittest.mock import Mock, MagicMock
 
 import ogr
 import numpy as np
 import pandas as pd
 from plio.io import io_gdal
 
-from autocnet.matcher import outlier_detector as od
+from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.examples import get_path
 from autocnet.graph.network import CandidateGraph
 from autocnet.utils.utils import array_to_poly
@@ -23,61 +22,8 @@ class TestEdge(unittest.TestCase):
         destination = Mock(node.Node)
         self.edge = edge.Edge(source=source, destination=destination)
 
-        '''
-        # Define a matches dataframe
-        source_image = np.zeros(20)
-        destination_image = np.ones(20)
-        source_idx = np.repeat(np.arange(10), 2)
-        destination_idx = np.array([336,  78, 267, 467, 214, 212, 463, 241,  27, 154, 320, 108, 196,
-                                    460,  67, 135,  80, 122, 106, 343])
-        distance = np.array([263.43121338,  287.05050659,  231.03895569,  242.14459229,
-                             140.07498169,  299.86331177,  332.05722046,  337.71438599,
-                             94.9052124,  208.04806519,  102.21056366,  173.48774719,
-                             102.19099426,  237.63206482,  240.93359375,  277.74627686,
-                             217.82791138,  224.22979736,  260.3939209,  287.91143799])
-        data = np.stack((source_image, source_idx, destination_image, destination_idx, distance), axis=-1)
-        self.edge.matches = pd.DataFrame(data, columns=['source_image', 'source_idx',
-                                                 'destination_image', 'destination_idx',
-                                                 'distance'])
-        '''
-
-    def test_properties(self):
-        pass
-
     def test_masks(self):
         self.assertIsInstance(self.edge.masks, pd.DataFrame)
-        matches = [[0, 0, 1, 0],
-                   [0, 1, 1, 1],
-                   [0, 2, 1, 2],
-                   [0, 3, 1, 3],
-                   [0, 4, 1, 4]]
-        matches_df = pd.DataFrame(data=matches,
-                                  columns=['source_image', 'source_idx',
-                                           'destination_image',
-                                           'destination_idx'])
-        e = edge.Edge()
-        e.matches = matches_df
-
-        # Test empty masks df on an edge with computed matches
-        expected = pd.DataFrame(True, columns=['symmetry'],
-                                index=matches_df.index)
-        self.assertTrue(expected.equals(e.masks))
-
-        # Test the masks setter, changing a given row
-        new_symmetry_rows = [True, False, True, False, True]
-        e.masks = "symmetry", new_symmetry_rows
-
-        self.assertEqual(new_symmetry_rows, list(e.masks.loc[:, "symmetry"]))
-
-        # Test the masks setter, inserting a new row
-        e.masks = "fundamental", new_symmetry_rows
-        self.assertEqual(new_symmetry_rows, list(e.masks.loc[:, "fundamental"]))
-
-
-
-    def test_compute_fundamental_matrix(self):
-        with self.assertRaises(AttributeError):
-            self.edge.compute_fundamental_matrix()
 
     def test_edge_overlap(self):
         e = edge.Edge()
@@ -115,7 +61,11 @@ class TestEdge(unittest.TestCase):
                             [0, 3, 1, 3],
                             [0, 4, 1, 4]]
 
+<<<<<<< HEAD
         matches_df = pd.DataFrame(data=keypoint_matches, columns=['source_image', 'source_idx', 'destination_image', 'destination_idx'])
+=======
+        matches_df = pd.DataFrame(keypoint_matches, columns = ['source_image', 'source_idx', 'destination_image', 'destination_idx'])
+>>>>>>> 1788194d709d73bf22d843752991d8c6dad9f87a
         e = edge.Edge()
         source_node = MagicMock(spec=node.Node())
         destination_node = MagicMock(spec=node.Node())
@@ -155,9 +105,10 @@ class TestEdge(unittest.TestCase):
 
         e.matches = matches_df
 
-        self.assertRaises(AttributeError, cg.edge[0][1].coverage)
+        #self.assertRaises(AttributeError, cg.edge[0][1].coverage)
         self.assertEqual(e.coverage(), 0.3)
 
+<<<<<<< HEAD
     def test_get_keypoints(self):
         src_keypoint_df = pd.DataFrame({'x': (0, 1, 2, 3, 4), 'y': (5, 6, 7, 8, 9),
                                         'response': (10, 11, 12, 13, 14), 'size': (15, 16, 17, 18, 19),
@@ -184,10 +135,33 @@ class TestEdge(unittest.TestCase):
 
         source_node.get_keypoints = MagicMock(return_value=src_keypoint_df)
         destination_node.get_keypoints = MagicMock(return_value=dst_keypoint_df)
+=======
+    def test_voronoi_transform(self):
+        keypoint_df = pd.DataFrame({'x': (15, 18, 18, 12, 12), 'y': (5, 10, 15, 15, 10)})
+        keypoint_matches = [[0, 0, 1, 0],
+                            [0, 1, 1, 1],
+                            [0, 2, 1, 2],
+                            [0, 3, 1, 3],
+                            [0, 4, 1, 4]]
+
+        matches_df = pd.DataFrame(data=keypoint_matches, columns=['source_image', 'source_idx',
+                                                                  'destination_image', 'destination_idx'])
+        e = edge.Edge()
+
+        e.clean = MagicMock(return_value=(matches_df, None))
+        e.matches = matches_df
+
+        source_node = MagicMock(spec=node.Node())
+        destination_node = MagicMock(spec=node.Node())
+
+        source_node.get_keypoint_coordinates = MagicMock(return_value=keypoint_df)
+        destination_node.get_keypoint_coordinates = MagicMock(return_value=keypoint_df)
+>>>>>>> 1788194d709d73bf22d843752991d8c6dad9f87a
 
         e.source = source_node
         e.destination = destination_node
 
+<<<<<<< HEAD
         e.clean = MagicMock(return_value=(matches_df, None))
         e.matches = matches_df
 
@@ -229,6 +203,104 @@ class TestEdge(unittest.TestCase):
         # Check key error thrown when string arg != "source" or "destination"
         with self.assertRaises(KeyError):
             e.get_keypoints("string", clean_keys)
+=======
+        source_geodata = Mock(spec=io_gdal.GeoDataset)
+        destination_geodata = Mock(spec=io_gdal.GeoDataset)
+
+        e.source.geodata = source_geodata
+        e.destination.geodata = destination_geodata
+
+        source_corners = [(0, 0),
+                          (20, 0),
+                          (20, 20),
+                          (0, 20)]
+
+        destination_corners = [(10, 5),
+                               (30, 5),
+                               (30, 25),
+                               (10, 25)]
+
+        source_poly = array_to_poly(source_corners)
+        destination_poly = array_to_poly(destination_corners)
+
+        def latlon_to_pixel(i, j):
+            return vals[(i, j)]
+
+        e.source.geodata.latlon_to_pixel = MagicMock(side_effect=latlon_to_pixel)
+        e.destination.geodata.latlon_to_pixel = MagicMock(side_effect=latlon_to_pixel)
+
+        e.source.geodata.footprint = source_poly
+        e.source.geodata.xy_corners = source_corners
+        e.destination.geodata.footprint = destination_poly
+        e.destination.geodata.xy_corners = destination_corners
+
+        vals = {(10, 5): (10, 5), (20, 5): (20, 5), (20, 20): (20, 20), (10, 20): (10, 20)}
+
+        weights = pd.DataFrame({"vor_weights": (19, 28, 37.5, 37.5, 28)})
+
+        e.compute_weights(clean_keys=[])
+
+        k = 0
+        for i in e.matches['vor_weights']:
+            self.assertAlmostEquals(i, weights['vor_weights'][k])
+            k += 1
+
+    def test_voronoi_homography(self):
+        source_keypoint_df = pd.DataFrame({'x': (15, 18, 18, 12, 12), 'y': (5, 10, 15, 15, 10)})
+        destination_keypoint_df = pd.DataFrame({'x': (5, 8, 8, 2, 2), 'y': (0, 5, 10, 10, 5)})
+        keypoint_matches = [[0, 0, 1, 0],
+                            [0, 1, 1, 1],
+                            [0, 2, 1, 2],
+                            [0, 3, 1, 3],
+                            [0, 4, 1, 4]]
+
+        matches_df = pd.DataFrame(data = keypoint_matches, columns=['source_image', 'source_idx',
+                                                                    'destination_image', 'destination_idx'])
+        e = edge.Edge()
+
+        e.clean = MagicMock(return_value=(matches_df, None))
+        e.matches = matches_df
+
+        source_node = MagicMock(spec=node.Node())
+        destination_node = MagicMock(spec=node.Node())
+
+        source_node.get_keypoint_coordinates = MagicMock(return_value=source_keypoint_df)
+        destination_node.get_keypoint_coordinates = MagicMock(return_value=destination_keypoint_df)
+
+        e.source = source_node
+        e.destination = destination_node
+
+        source_geodata = Mock(spec=io_gdal.GeoDataset)
+        destination_geodata = Mock(spec=io_gdal.GeoDataset)
+
+        e.source.geodata = source_geodata
+        e.destination.geodata = destination_geodata
+
+        source_corners = [(0, 0),
+                          (20, 0),
+                          (20, 20),
+                          (0, 20)]
+
+        destination_corners = [(0, 0),
+                               (20, 0),
+                               (20, 20),
+                               (0, 20)]
+
+        e.source.geodata.coordinate_transformation.this = None
+        e.destination.geodata.coordinate_transformation.this = None
+
+        e.source.geodata.xy_corners = source_corners
+        e.destination.geodata.xy_corners = destination_corners
+
+        weights = pd.DataFrame({"vor_weights": (19, 28, 37.5, 37.5, 28)})
+
+        e.compute_weights(clean_keys=[])
+
+        k = 0
+        for i in e.matches['vor_weights']:
+            self.assertAlmostEquals(i, weights['vor_weights'][k])
+            k += 1
+>>>>>>> 1788194d709d73bf22d843752991d8c6dad9f87a
 
     def test_eq(self):
         edge1 = edge.Edge()
@@ -278,21 +350,9 @@ class TestEdge(unittest.TestCase):
 
         self.assertEqual(expected, e.__repr__())
 
-    def test_symmetry_check(self):
-        # Matches is init to None
-        e = edge.Edge()
-        e.source = node.Node()
-        e.destination = node.Node()
-        # If there are no matches, should raise attrib err
-        with (self.assertRaises(AttributeError)):
-            e.symmetry_check()
-
     def test_ratio_check(self):
         # Matches is init to None
         e = edge.Edge()
-        # If there are no matches, should raise attrib err
-        with (self.assertRaises(AttributeError)):
-            e.ratio_check()
 
         # If there are matches...
         keypoint_matches = [[0, 0, 1, 4, 5],

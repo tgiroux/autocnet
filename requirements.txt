@@ -12,4 +12,5 @@ shapely
 scikit-image
 sqlalchemy
 dill
+plio
 h5py

@@ -1,4 +1,5 @@
 import itertools
+import math
 import os
 from time import gmtime, strftime
 import warnings
@@ -22,6 +23,12 @@ from autocnet.graph.node import Node
 from autocnet.io import network as io_network
 from autocnet.vis.graph_view import plot_graph, cluster_plot
 
+# The total number of pixels squared that can fit into the keys number of GB of RAM for SIFT.
+MAXSIZE = {0:None,
+           2:6250,
+           4:8840,
+           8:12500,
+           12:15310}
 
 class CandidateGraph(nx.Graph):
     """
@@ -86,6 +93,20 @@ class CandidateGraph(nx.Graph):
             if not self.edge[s][d] == other.edge[s][d]:
                 eq = False
         return eq
+
+    @property
+    def maxsize(self):
+        if not hasattr(self, '_maxsize'):
+            self._maxsize = MAXSIZE[0]
+        return self._maxsize
+
+    @maxsize.setter
+    def maxsize(self, value):
+        if not value in MAXSIZE.keys():
+            raise KeyError('Value must be in {}'.format(','.join(map(str,MAXSIZE.keys()))))
+        else:
+            self._maxsize = MAXSIZE[value]
+
 
     @classmethod
     def from_filelist(cls, filelist, basepath=None):
@@ -204,25 +225,50 @@ class CandidateGraph(nx.Graph):
 
         raise NotImplementedError
 
-    def extract_features(self, *args, **kwargs):
+    def extract_features(self, band=1, *args, **kwargs):  # pragma: no cover
         """
         Extracts features from each image in the graph and uses the result to assign the
         node attributes for 'handle', 'image', 'keypoints', and 'descriptors'.
+        """
+        for i, node in self.nodes_iter(data=True):
+            array = node.geodata.read_array(band=band)
+            node.extract_features(array, *args, **kwargs),
+
+    def extract_features_with_downsampling(self, downsample_amount=None, *args, **kwargs): # pragma: no cover
+        """
+        Extract interest points from a downsampled array.  The array is downsampled
+        by the downsample_amount keyword using the Lanconz downsample amount.  If the
+        downsample keyword is not supplied, compute a downsampling constant as the
+        total array size divided by the network maxsize attribute.
 
         Parameters
         ----------
-        method : {'orb', 'sift', 'fast'}
-                 The descriptor method to be used
 
-        extractor_parameters : dict
-                               A dictionary containing OpenCV SIFT parameters names and values.
-
-        downsampling : int
-                       The divisor to image_size to down sample the input image.
+        downsample_amount : int
+                            The amount of downsampling to apply to the image
         """
         for i, node in self.nodes_iter(data=True):
-            image = node.get_array()
-            node.extract_features(image, *args, **kwargs),
+            if downsample_amount == None:
+                total_size = node.geodata.raster_size[0] * node.geodata.raster_size[1]
+                downsample_amount = math.ceil(total_size / self.maxsize**2)
+            node.extract_features_with_downsampling(downsample_amount, *args, **kwargs)
+
+    def extract_features_with_tiling(self, tilesize=1000, overlap=500, *args, **kwargs): #pragma: no cover
+        for i, node in self.nodes_iter(data=True):
+            print('Processing {}'.format(node['image_name']))
+            node.extract_features_with_tiling(tilesize=tilesize, overlap=overlap, *args, **kwargs)
+
+    def extract_subsets(self, *args, **kwargs):
+        """
+        Extracts features from each image in those regions estimated to be
+        overlapping.
+
+        *args and **kwargs are passed to the feature extractor.  For example,
+        passing method='sift' will cause the extractor to use the sift method.
+        """
+        for source, destination, e in self.edges_iter(data=True):
+            e.extract_subset(*args, **kwargs)
+
 
     def save_features(self, out_path, nodes=[], **kwargs):
         """
@@ -285,6 +331,17 @@ class CandidateGraph(nx.Graph):
         autocnet.graph.edge.Edge.decompose_and_match
         """
         self.apply_func_to_edges('decompose_and_match', *args, **kwargs)
+
+    def estimate_mbrs(self, *args, **kwargs):
+        """
+        For each edge, estimate the overlap and compute a minimum bounding
+        rectangle (mbr) in pixel space.
+
+        See Also
+        --------
+        autocnet.graoh.edge.Edge.compute_mbr
+        """
+        self.apply_func_to_edges('estimate_mbr', *args, **kwargs)
 
     def compute_clusters(self, func=markov_cluster.mcl, *args, **kwargs):
         """
@@ -381,7 +438,7 @@ class CandidateGraph(nx.Graph):
 
         See Also
         --------
-        autocnet.matcher.outlier_detector.DistanceRatio.compute
+        autocnet.matcher.cpu_outlier_detector.DistanceRatio.compute
         '''
         self.apply_func_to_edges('ratio_check', *args, **kwargs)
 
@@ -392,7 +449,7 @@ class CandidateGraph(nx.Graph):
         See Also
         --------
         autocnet.graph.edge.Edge.compute_homography
-        autocnet.matcher.outlier_detector.compute_homography
+        autocnet.matcher.cpu_outlier_detector.compute_homography
         '''
         self.apply_func_to_edges('compute_homography', *args, **kwargs)
 
@@ -402,7 +459,7 @@ class CandidateGraph(nx.Graph):
 
         See Also
         --------
-        autocnet.matcher.outlier_detector.compute_fundamental_matrix
+        autocnet.matcher.cpu_outlier_detector.compute_fundamental_matrix
         '''
         self.apply_func_to_edges('compute_fundamental_matrix', *args, **kwargs)
 
@@ -422,7 +479,7 @@ class CandidateGraph(nx.Graph):
 
         See Also
         --------
-        autocnet.matcher.outlier_detector.SpatialSuppression
+        autocnet.matcher.cpu_outlier_detector.SpatialSuppression
         '''
         self.apply_func_to_edges('suppress', *args, **kwargs)
 
@@ -519,7 +576,7 @@ class CandidateGraph(nx.Graph):
         """
         return plot_graph(self, ax=ax, **kwargs)
 
-    def plot_cluster(self, ax=None, **kwargs):
+    def plot_cluster(self, ax=None, **kwargs):  # pragma: no cover
         """
         Plot the graph based on the clusters generated by
         the markov clustering algorithm
@@ -651,8 +708,7 @@ class CandidateGraph(nx.Graph):
 
         # get all edges that have matches
         matches = [(u, v) for u, v, edge in self.edges_iter(data=True)
-                   if hasattr(edge, 'matches') and
-                   not edge.matches is None]
+                   if not edge.matches.empty]
 
         return self.create_edge_subgraph(matches)
 
