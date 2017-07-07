@@ -99,10 +99,10 @@ class TestNode(object):
                              (envelope[2], envelope[3]), (envelope[0], envelope[3])]
 
         reproj_geom = cub_node.reproject_geom(coord_list)
-        self.assertEqual(reproj_geom.bounds[0], 5735)
-        self.assertEqual(reproj_geom.bounds[1], 5559)
-        self.assertEqual(reproj_geom.bounds[2], 23798)
-        self.assertEqual(reproj_geom.bounds[3], 27315)
+        assert reproj_geom.bounds[0] == 5735
+        assert reproj_geom.bounds[1] == 5559
+        assert reproj_geom.bounds[2] == 23798
+        assert reproj_geom.bounds[3] == 27315
 
     def test_isis_serial(self, node):
         serial = node.isis_serial

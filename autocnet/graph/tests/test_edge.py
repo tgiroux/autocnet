@@ -126,11 +126,11 @@ class TestEdge(unittest.TestCase):
                                                                   'destination_image', 'destination_idx'])
 
         e = edge.Edge()
-        source_node = MagicMock(spec=node.Node())
-        destination_node = MagicMock(spec=node.Node())
+        source_node = node.Node()
+        destination_node = node.Node()
 
-        source_node.get_keypoints = MagicMock(return_value=src_keypoint_df)
-        destination_node.get_keypoints = MagicMock(return_value=dst_keypoint_df)
+        source_node.get_keypoint_coordinates = MagicMock(return_value=src_keypoint_df)
+        destination_node.get_keypoint_coordinates = MagicMock(return_value=dst_keypoint_df)
 
         e.source = source_node
         e.destination = destination_node
@@ -139,13 +139,11 @@ class TestEdge(unittest.TestCase):
         e.clean = MagicMock(return_value=(matches_df, None))
         e.matches = matches_df
 
-        clean_keys = ["fundamental", "ratio", "symmetry"]
-
         # Test all uses for edge.get_keypoints()
-        src_matched_keypts = e.get_keypoints("source", clean_keys)
-        src_matched_keypts2 = e.get_keypoints(e.source, clean_keys)
-        dst_matched_keypts = e.get_keypoints("destination", clean_keys)
-        dst_matched_keypts2 = e.get_keypoints(e.destination, clean_keys)
+        src_matched_keypts = e.get_keypoints("source")
+        src_matched_keypts2 = e.get_keypoints(e.source)
+        dst_matched_keypts = e.get_keypoints("destination")
+        dst_matched_keypts2 = e.get_keypoints(e.destination)
 
         # [output df to test] [name of node] [df to test against]
         to_test = [[src_matched_keypts, "source", src_keypoint_df],
@@ -167,16 +165,16 @@ class TestEdge(unittest.TestCase):
                 # match their counterpart in orig df
                 for column in out_df[0].columns:
                     self.assertTrue(out_df[0].iloc[row_idx][column] ==
-                                    out_df[2].iloc[row_idx][column])
+                                            out_df[2].iloc[row_idx][column])
 
         # Assert type-checking in method throws proper errors
         with self.assertRaises(TypeError):
-            e.get_keypoints("source", 1)
+            e.get_keypoints("source", index = 456)
         with self.assertRaises(TypeError):
-            e.get_keypoints(1, clean_keys)
+            e.get_keypoints(1)
         # Check key error thrown when string arg != "source" or "destination"
         with self.assertRaises(KeyError):
-            e.get_keypoints("string", clean_keys)
+            e.get_keypoints("string")
 
     def test_eq(self):
         edge1 = edge.Edge()

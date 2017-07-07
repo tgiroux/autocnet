@@ -112,7 +112,7 @@ class Edge(dict, MutableMapping):
                   the source_mbr and destin_mbr attributes (stored in the
                   edge dict).
         """
-        pass    
+        pass
 
     def match_overlap(self, k=2, **kwargs):
         """
@@ -121,7 +121,7 @@ class Edge(dict, MutableMapping):
         """
         overlaps = [self['source_mbr'], self['destin_mbr']]
         self.match(k=k, overlap=overlaps, **kwargs)
-        
+
     def decompose(self):
         """
         Apply coupled decomposition to the images and
@@ -199,8 +199,20 @@ class Edge(dict, MutableMapping):
             # Set the initial state of the fundamental mask in the masks
             self.masks[maskname] = mask
 
-    def get_keypoints(self, node, index=None, homogeneous=True):
-        node = getattr(self, node)
+    def get_keypoints(self, node, index=None, homogeneous=False):
+        print(type(node))
+        if type(node) is str:
+            node = node.lower()
+            if node == "source" or node == "destination":
+                node = getattr(self, node)
+            else:
+                raise KeyError
+        elif type(node) is not Node:
+            raise TypeError
+        print(hasattr(index, '__iter__'))
+        print(index is not None)
+        if not hasattr(index, '__iter__') and index is not None:
+            raise TypeError
         return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
 
     def compute_fundamental_error(self, clean_keys=[]):
@@ -509,4 +521,3 @@ class Edge(dict, MutableMapping):
         pixel space
         """
         self.overlap_latlon_coords, self["source_mbr"], self["destin_mbr"] = self.source.geodata.compute_overlap(self.destination.geodata, **kwargs)
-
