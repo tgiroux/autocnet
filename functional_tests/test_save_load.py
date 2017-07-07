@@ -10,7 +10,7 @@ def test_save_project(tmpdir):
     cg = CandidateGraph.from_adjacency(adjacency, basepath=basepath)
 
     #Apply SIFT to extract features
-    cg.extract_features(method='sift', extractor_parameters={'nfeatures':500})
+    cg.extract_features(extractor_method='sift', extractor_parameters={'nfeatures':500})
 
     #Match
     cg.match()

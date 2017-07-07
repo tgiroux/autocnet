@@ -12,7 +12,7 @@ VERSION = autocnet.__version__
 def setup_package():
     examples = set()
     for i in available():
-        if not os.path.isdir('plio/examples/' + i):
+        if not os.path.isdir('autocnet/examples/' + i):
             if '.' in i:
                 glob_name = 'examples/*.' + i.split('.')[-1]
             else:
@@ -22,14 +22,14 @@ def setup_package():
         examples.add(glob_name)
 
     setup(
-        name = "plio",
+        name = "autocnet",
         version = VERSION,
         author = "Jay Laura",
         author_email = "jlaura@usgs.gov",
         description = ("I/O API to support planetary data formats."),
         long_description = long_description,
         license = "Public Domain",
-        keywords = "planetary io",
+        keywords = "Multi-image correspondence detection",
         url = "http://packages.python.org/autocnet",
         packages=find_packages(),
         include_package_data=True,

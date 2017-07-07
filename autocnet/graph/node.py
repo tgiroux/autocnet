@@ -1,4 +1,5 @@
 from collections import defaultdict, MutableMapping
+import itertools
 import os
 import warnings
 
@@ -6,6 +7,7 @@ import numpy as np
 import pandas as pd
 from plio.io.io_gdal import GeoDataset
 from plio.io.isis_serial_number import generate_serial_number
+
 from scipy.misc import bytescale
 from shapely.geometry import Polygon
 
@@ -15,8 +17,8 @@ from autocnet.control.control import Correspondence, Point
 from autocnet.io import keypoints as io_keypoints
 
 from autocnet.matcher.add_depth import deepen_correspondences
-from autocnet.matcher import feature_extractor as fe
-from autocnet.matcher import outlier_detector as od
+from autocnet.matcher import cpu_extractor as fe
+from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.matcher import suppression_funcs as spf
 from autocnet.cg.cg import convex_hull_ratio
 
@@ -68,6 +70,8 @@ class Node(dict, MutableMapping):
         self.point_to_correspondence = defaultdict(set)
         self.point_to_correspondence_df = None
         self.descriptors = None
+        self.keypoints = pd.DataFrame()
+        self.masks = pd.DataFrame()
 
     def __repr__(self):
         return """
@@ -88,11 +92,9 @@ class Node(dict, MutableMapping):
             if isinstance(v, pd.DataFrame):
                 if not v.equals(o[k]):
                     eq = False
-                    print('N', k)
             elif isinstance(v, np.ndarray):
                 if not v.all() == o[k].all():
                     eq = False
-                    print('N2', k)
         return eq
     """
     def __getitem__(self, item):
@@ -120,16 +122,16 @@ class Node(dict, MutableMapping):
         else:
             return None
 
-    @property
+    """    @property
     def masks(self):
         mask_lookup = {'suppression': 'suppression'}
 
-        if not hasattr(self, '_keypoints'):
+        if self.keypoints is None:
             warnings.warn('Keypoints have not been extracted')
             return
 
         if not hasattr(self, '_masks'):
-            self._masks = pd.DataFrame(index=self._keypoints.index)
+            self._masks = pd.DataFrame(index=self.keypoints.index)
 
         # If the mask is coming form another object that tracks
         # state, dynamically draw the mask from the object.
@@ -143,7 +145,7 @@ class Node(dict, MutableMapping):
         column_name = v[0]
         boolean_mask = v[1]
         self.masks[column_name] = boolean_mask
-
+    """
     @property
     def isis_serial(self):
         """
@@ -160,24 +162,7 @@ class Node(dict, MutableMapping):
 
     @property
     def nkeypoints(self):
-        if hasattr(self, '_keypoints'):
-            return len(self._keypoints)
-        else:
-            return 0
-
-    """    @property
-    def keypoints(self):
-        if hasattr(self, '_keypoints'):
-            return self._keypoints.copy()
-        else:
-            return None
-
-    @property
-    def descriptors(self):
-        if hasattr(self, '_descriptors'):
-            return np.copy(self._descriptors)
-        else:
-            return None"""
+        return len(self.keypoints)
 
     def coverage(self):
         """
@@ -236,23 +221,19 @@ class Node(dict, MutableMapping):
         """
         Return the keypoints for the node.  If index is passed, return
         the appropriate subset.
-
         Parameters
         ----------
         index : iterable
                 indices for of the keypoints to return
-
         Returns
         -------
          : dataframe
            A pandas dataframe of keypoints
-
         """
-        if hasattr(self, '_keypoints'):
-            if index is not None:
-                return self._keypoints.loc[index]
-            else:
-                return self._keypoints
+        if index is not None:
+            return self.keypoints.loc[index]
+        else:
+            return self.keypoints
 
     def get_keypoint_coordinates(self, index=None, homogeneous=False):
         """
@@ -272,7 +253,10 @@ class Node(dict, MutableMapping):
          : dataframe
            A pandas dataframe of keypoint coordinates
         """
-        keypoints = self.get_keypoints(index=index)[['x', 'y']]
+        if index is None:
+            keypoints = self.keypoints[['x', 'y']]
+        else:
+            keypoints = self.keypoints.loc[index][['x', 'y']]
 
         if homogeneous:
             keypoints['homogeneous'] = 1
@@ -280,7 +264,7 @@ class Node(dict, MutableMapping):
         return keypoints
 
     @staticmethod
-    def _extract_features(*args, **kwargs):
+    def _extract_features(array, *args, **kwargs):
         """
         Extract features for the node
 
@@ -289,13 +273,106 @@ class Node(dict, MutableMapping):
         array : ndarray
 
         kwargs : dict
-                 kwargs passed to autocnet.feature_extractor.extract_features
+                 kwargs passed to autocnet.cpu_extractor.extract_features
 
         """
         pass
 
-    def extract_features(self, *args, **kwargs):
-        self._keypoints, self.descriptors = Node._extract_features(*args, **kwargs)
+    def extract_features(self, array, xystart=[], *args, **kwargs):
+        arraysize = array.shape[0] * array.shape[1]
+
+        try:
+            maxsize = self.maxsize[0] * self.maxsize[1]
+        except:
+            maxsize = np.inf
+
+        if arraysize > maxsize:
+            warnings.warn('Node: {}. Maximum feature extraction array size is {}.  Maximum array size is {}. Please use tiling or downsampling.'.format(self['node_id'], maxsize, arraysize))
+
+        keypoints, descriptors = Node._extract_features(array, *args, **kwargs)
+        count = len(self.keypoints)
+
+        if xystart:
+            keypoints['x'] += xystart[0]
+            keypoints['y'] += xystart[1]
+
+        self.keypoints = pd.concat((self.keypoints, keypoints))
+        descriptor_mask = self.keypoints.duplicated()[count:]
+        number_new = descriptor_mask.sum()
+
+        # Removed duplicated and re-index the merged keypoints
+        self.keypoints.drop_duplicates(inplace=True)
+        self.keypoints.reset_index(inplace=True, drop=True)
+
+        if self.descriptors is not None:
+            self.descriptors = np.concatenate((self.descriptors, descriptors[~descriptor_mask]))
+        else:
+            self.descriptors = descriptors
+
+    def extract_features_from_overlaps(self, overlaps=[], downsampling=False, tiling=False, *args, **kwargs):
+        # iterate through the overlaps
+        # check for downsampling or tiling and dispatch as needed to that func
+        # that should then dispatch to the extract features func
+        pass
+
+    def extract_features_with_downsampling(self, downsample_amount,
+                                           array_read_args={},
+                                           interp='lanczos', *args, **kwargs):
+        """
+        Extract interest points for the this node (image) by first downsampling,
+        then applying the extractor, and then upsampling the results backin to
+        true image space.
+
+        Parameters
+        ----------
+        downsample_amount : int
+                            The amount to downsample by
+        """
+        array_size = self.geodata.raster_size
+        total_size = array_size[0] * array_size[1]
+        shape = (int(array_size[0] / downsample_amount),
+                 int(array_size[1] / downsample_amount))
+        array = imresize(self.geodata.read_array(**array_read_args), shape, interp=interp)
+        self.extract_features(array, *args, **kwargs)
+        self.keypoints['x'] *= downsample_amount
+        self.keypoints['y'] *= downsample_amount
+
+    def extract_features_with_tiling(self, tilesize=1000, overlap=500, *args, **kwargs):
+        array_size = self.geodata.raster_size
+        stepsize = tilesize - overlap
+        if stepsize < 0:
+            raise ValueError('Overlap can not be greater than tilesize.')
+        # Compute the tiles
+        if tilesize >= array_size[1]:
+            ytiles = [(0, array_size[1])]
+        else:
+            ystarts = range(0, array_size[1], stepsize)
+            ystops = range(tilesize, array_size[1], stepsize)
+            ytiles = list(zip(ystarts, ystops))
+            ytiles.append((ytiles[-1][0] + stepsize, array_size[1]))
+        
+        if tilesize >= array_size[0]:
+            xtiles = [(0, array_size[0])]
+        else:
+            xstarts = range(0, array_size[0], stepsize)
+            xstops = range(tilesize, array_size[0], stepsize)
+            xtiles = list(zip(xstarts, xstops))
+            xtiles.append((xtiles[-1][0] + stepsize, array_size[0]))
+        tiles = itertools.product(xtiles, ytiles)
+
+        for tile in tiles:
+            # xstart, ystart, xcount, ycount
+            xstart = tile[0][0]
+            ystart = tile[1][0]
+            xstop = tile[0][1]
+            ystop = tile[1][1]
+            pixels = [xstart, ystart,
+                      xstop - xstart,
+                      ystop - ystart]
+
+            array = self.geodata.read_array(pixels=pixels)
+            xystart = [xstart, ystart]
+            self.extract_features(array, xystart, *args, **kwargs)
 
     def load_features(self, in_path, format='npy'):
         """
@@ -315,10 +392,10 @@ class Node(dict, MutableMapping):
             keypoints, descriptors = io_keypoints.from_hdf(in_path,
                                                            key=self['image_name'])
 
-        self._keypoints = keypoints
+        self.keypoints = keypoints
         self.descriptors = descriptors
 
-    def save_features(self, out_path, format='npy'):
+    def save_features(self, out_path):
         """
         Save the extracted keypoints and descriptors to
         the given HDF5 file.  By default, the .npz files are saved
@@ -333,18 +410,13 @@ class Node(dict, MutableMapping):
                  The desired output format.
         """
 
-        if not hasattr(self, '_keypoints'):
-            warnings.warn('Node {} has not had features extracted.'.format(i))
+        if self.keypoints.empty:
+            warnings.warn('Node {} has not had features extracted.'.format(self['node_id']))
             return
 
-        if format == 'hdf':
-            io_keypoints.to_hdf(self._keypoints, self.descriptors, out_path,
-                                key=self['image_name'])
-        elif format == 'npy':
-            io_keypoints.to_npy(self._keypoints, self.descriptors,
-                                out_path)
-        else:
-            warnings.warn('Unknown keypoint output format.')
+        io_keypoints.to_npy(self.keypoints, self.descriptors,
+                            out_path)
+
 
     def group_correspondences(self, cg, *args, deepen=False, **kwargs):
         """
@@ -446,26 +518,6 @@ class Node(dict, MutableMapping):
         columns = ['point_id', 'point_type', 'serialnumber', 'measure_type', 'x', 'y', 'node_id']
         self.point_to_correspondence_df = pd.DataFrame(data, columns=columns)
 
-    def suppress(self, func=spf.response, **kwargs):
-        if not hasattr(self, '_keypoints'):
-            raise AttributeError('No keypoints extracted for this node.')
-
-        domain = self.handle.raster_size
-        self._keypoints['strength'] = self._keypoints.apply(func, axis=1)
-
-        if not hasattr(self, 'suppression'):
-            # Instantiate a suppression object and suppress keypoints
-            self.suppression = od.SpatialSuppression(self._keypoints, domain, **kwargs)
-            self.suppression.suppress()
-        else:
-            # Update the suppression object attributes and process
-            for k, v in kwargs.items():
-                if hasattr(self.suppression, k):
-                    setattr(self.suppression, k, v)
-            self.suppression.suppress()
-
-        self.masks = ('suppression', self.suppression.mask)
-
     def coverage_ratio(self, clean_keys=[]):
         """
         Compute the ratio $area_{convexhull} / area_{total}$
@@ -476,11 +528,11 @@ class Node(dict, MutableMapping):
                 The ratio of convex hull area to total area.
         """
         ideal_area = self.geodata.pixel_area
-        if not hasattr(self, '_keypoints'):
+        if not hasattr(self, 'keypoints'):
             raise AttributeError('Keypoints must be extracted already, they have not been.')
 
-        matches, mask = self._clean(clean_keys)
-        keypoints = self._keypoints[mask][['x', 'y']].values
+        #TODO: clean_keys are disabled - re-enable.
+        keypoints = self.get_keypoint_coordinates()
 
         ratio = convex_hull_ratio(keypoints, ideal_area)
         return ratio
@@ -506,11 +558,11 @@ class Node(dict, MutableMapping):
         mask : series
                     A boolean series to inflate back to the full match set
         """
-        if not hasattr(self, '_keypoints'):
+        if self.keypoints.empty:
             raise AttributeError('Keypoints have not been extracted for this node.')
         panel = self.masks
         mask = panel[clean_keys].all(axis=1)
-        matches = self._keypoints[mask]
+        matches = self.keypoints[mask]
         return matches, mask
 
     def reproject_geom(self, coords):

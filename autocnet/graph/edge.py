@@ -1,3 +1,4 @@
+from functools import wraps
 import warnings
 from collections import MutableMapping
 
@@ -10,13 +11,14 @@ from scipy.spatial.distance import cdist
 import autocnet
 from autocnet.graph.node import Node
 from autocnet.utils import utils
-from autocnet.matcher import outlier_detector as od
+from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.matcher import suppression_funcs as spf
 from autocnet.matcher import subpixel as sp
 from autocnet.transformation import fundamental_matrix as fm
 from autocnet.transformation import homography as hm
 from autocnet.vis.graph_view import plot_edge, plot_node, plot_edge_decomposition
 from autocnet.cg import cg
+
 
 
 class Edge(dict, MutableMapping):
@@ -42,8 +44,11 @@ class Edge(dict, MutableMapping):
         self.destination = destination
         self['homography'] = None
         self['fundamental_matrix'] = None
-        self.matches = None
+        self.matches = pd.DataFrame()
+        self.masks = pd.DataFrame()
         self['weights'] = {}
+        self['source_mbr'] = None
+        self['destin_mbr'] = None
 
     def __repr__(self):
         return """
@@ -68,10 +73,10 @@ class Edge(dict, MutableMapping):
             elif isinstance(v, np.ndarray):
                 if not v.all() == o[k].all():
                     eq = False
-                    
+
         return eq
 
-    @property
+    """@property
     def masks(self):
         mask_lookup = {'fundamental': 'fundamental_matrix'}
         if not hasattr(self, '_masks'):
@@ -86,10 +91,7 @@ class Edge(dict, MutableMapping):
     def masks(self, v):
         column_name = v[0]
         boolean_mask = v[1]
-        self.masks[column_name] = boolean_mask
-
-    def decompose_and_match(*args, **kwargs):
-        pass
+        self.masks[column_name] = boolean_mask"""
 
     def match(self, k=2, **kwargs):
 
@@ -104,25 +106,60 @@ class Edge(dict, MutableMapping):
         ----------
         k : int
             The number of neighbors to find
+
+        overlap : boolean
+                  Apply the matcher only to the overlapping area defined by
+                  the source_mbr and destin_mbr attributes (stored in the
+                  edge dict).
+        """
+        pass    
+
+    def match_overlap(self, k=2, **kwargs):
+        """
+        Given two sets of descriptors, apply the matcher with the
+        source and destination overlaps.
+        """
+        overlaps = [self['source_mbr'], self['destin_mbr']]
+        self.match(k=k, overlap=overlaps, **kwargs)
+        
+    def decompose(self):
+        """
+        Apply coupled decomposition to the images and
+        match identified sub-images
         """
         pass
 
+    def decompose_and_match(*args, **kwargs):
+        pass
+
+    """
+    def extract_subset(self, *args, **kwargs):
+        self.compute_overlap()
+
+        # Extract the source
+        minx, maxx, miny, maxy = self['source_mbr']
+        xystart = (minx, miny)
+        pixels=[minx, miny, maxx-minx, maxy-miny]
+        node = self.source
+        arr = node.geodata.read_array(pixels=pixels)
+        node.extract_features(arr, xystart=xystart, *args, **kwargs)
+
+        # Extract the destination
+        minx, maxx, miny, maxy = self['destin_mbr']
+        xystart = (minx, miny)
+        pixels=[minx, miny, maxx-minx, maxy-miny]
+        node = self.destination
+        arr = node.geodata.read_array(pixels=pixels)
+        node.extract_features(arr, xystart=xystart, *args, **kwargs)
+    """
     def symmetry_check(self):
-        if isinstance(self.matches, pd.DataFrame):
-            mask = od.mirroring_test(self.matches)
-            self.masks = ('symmetry', mask)
-        else:
-            raise AttributeError('No matches have been computed for this edge.')
+        self.masks['symmetry'] = od.mirroring_test(self.matches)
 
-    def ratio_check(self, clean_keys=[], **kwargs):
-        if isinstance(self.matches, pd.DataFrame):
-            matches, mask = self.clean(clean_keys)
-            distance_mask = od.distance_ratio(matches, **kwargs)
-            self.masks = ('ratio', distance_mask)
-        else:
-            raise AttributeError('No matches have been computed for this edge.')
+    def ratio_check(self, clean_keys=[], maskname='ratio', **kwargs):
+        matches, mask = self.clean(clean_keys)
+        self.masks[maskname] = od.distance_ratio(matches, **kwargs)
 
-    def compute_fundamental_matrix(self, clean_keys=[], **kwargs):
+    def compute_fundamental_matrix(self, clean_keys=[], maskname='fundamental', **kwargs):
         """
         Estimate the fundamental matrix (F) using the correspondences tagged to this
         edge.
@@ -142,16 +179,11 @@ class Edge(dict, MutableMapping):
         autocnet.transformation.transformations.FundamentalMatrix
 
         """
-        if not isinstance(self.matches, pd.DataFrame):
-            raise AttributeError('Matches have not been computed for this edge')
-            return
         matches, mask = self.clean(clean_keys)
 
         # TODO: Homogeneous is horribly inefficient here, use Numpy array notation
-        s_keypoints = self.source.get_keypoint_coordinates(index=matches['source_idx'],
-                                                                 homogeneous=True)
-        d_keypoints = self.destination.get_keypoint_coordinates(index=matches['destination_idx'],
-                                                                homogeneous=True)
+        s_keypoints = self.get_keypoints('source', index=matches['source_idx'])
+        d_keypoints = self.get_keypoints('destination', index=matches['destination_idx'])
 
 
         # Replace the index with the matches index.
@@ -165,9 +197,42 @@ class Edge(dict, MutableMapping):
             mask[mask] = fmask
 
             # Set the initial state of the fundamental mask in the masks
-            self.masks = ('fundamental', mask)
+            self.masks[maskname] = mask
 
-    def compute_homography(self, method='ransac', clean_keys=[], pid=None, **kwargs):
+    def get_keypoints(self, node, index=None, homogeneous=True):
+        node = getattr(self, node)
+        return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
+
+    def compute_fundamental_error(self, clean_keys=[]):
+        """
+        Given a fundamental matrix, compute the reprojective error between
+        a two sets of keypoints.
+
+        Parameters
+        ----------
+        clean_keys : list
+                     of string keys to masking arrays
+                     (created by calling outlier detection)
+
+        Returns
+        -------
+        error : pd.Series
+                of reprojective error indexed to the matches data frame
+        """
+        if self['fundamental_matrix'] is None:
+            warning.warn('No fundamental matrix has been compute for this edge.'
+            )
+        matches, masks = self.clean(clean_keys)
+
+        source_kps = self.source.get_keypoint_coordinates(index=matches['source_idx'])
+        destination_kps = self.destination.get_keypoint_coordinates(index=matches['destination_idx'])
+
+        error = fm.compute_fundamental_error(self['fundamental_matrix'], source_kps, destination_kps)
+
+        error = pd.Series(error, index=matches.index)
+        return error
+
+    def compute_homography(self, method='ransac', clean_keys=[], pid=None, maskname='homography', **kwargs):
         """
         For each edge in the (sub) graph, compute the homography
         Parameters
@@ -186,12 +251,6 @@ class Edge(dict, MutableMapping):
         mask : ndarray
                Boolean array of the outliers
         """
-
-        if isinstance(self.matches, pd.DataFrame):
-            matches = self.matches
-        else:
-            raise AttributeError('Matches have not been computed for this edge')
-
         matches, mask = self.clean(clean_keys)
 
         s_keypoints = self.source.get_keypoint_coordinates(index=matches['source_idx'])
@@ -201,7 +260,7 @@ class Edge(dict, MutableMapping):
 
         # Convert the truncated RANSAC mask back into a full length mask
         mask[mask] = hmask
-        self.masks = ('ransac', mask)
+        self.masks['homography'] = mask
 
     def subpixel_register(self, clean_keys=[], threshold=0.8,
                           template_size=19, search_size=53, max_x_shift=1.0,
@@ -279,19 +338,18 @@ class Edge(dict, MutableMapping):
         threshold_mask = self.matches['correlation'] >= threshold
 
         # Compute the mask for the point shifts that are too large
-        query_string = 'x_offset <= -{0} or x_offset >= {0} or y_offset <= -{1} or y_offset >= {1}'.format(max_x_shift,
-                                                                                                           max_y_shift)
+        query_string = 'x_offset <= -{0} or x_offset >= {0} or y_offset <= -{1} or y_offset >= {1}'.format(max_x_shift,max_y_shift)
         sp_shift_outliers = self.matches.query(query_string)
         shift_mask = pd.Series(True, index=self.matches.index)
         shift_mask.loc[sp_shift_outliers.index] = False
 
         # Generate the composite mask and write the masks to the mask data structure
         mask = threshold_mask & shift_mask
-        self.masks = ('shift', shift_mask)
-        self.masks = ('threshold', threshold_mask)
-        self.masks = ('subpixel', mask)
+        self.masks['shift'] = shift_mask
+        self.masks['threshold'] = threshold_mask
+        self.masks['subpixel'] = mask
 
-    def suppress(self, suppression_func=spf.correlation, clean_keys=[], **kwargs):
+    def suppress(self, suppression_func=spf.correlation, clean_keys=[], maskname='suppression', **kwargs):
         """
         Apply a disc based suppression algorithm to get a good spatial
         distribution of high quality points, where the user defines some
@@ -325,7 +383,7 @@ class Edge(dict, MutableMapping):
         smask, k = od.spatial_suppression(merged, domain, **kwargs)
 
         mask[mask] = smask
-        self.masks = ('suppression', mask)
+        self.masks[maskname] = mask
 
     def plot_source(self, ax=None, clean_keys=[], **kwargs):  # pragma: no cover
         matches, mask = self.clean(clean_keys=clean_keys)
@@ -408,9 +466,6 @@ class Edge(dict, MutableMapping):
                                    returns the overlap area
                                    covered by the keypoints
         """
-        if not isinstance(self.matches, pd.DataFrame):
-            raise AttributeError('Edge needs to have features extracted and matched')
-            return
         matches, mask = self.clean(clean_keys)
         source_array = self.source.get_keypoint_coordinates(index=matches['source_idx']).values
 
@@ -432,89 +487,29 @@ class Edge(dict, MutableMapping):
 
         return total_overlap_coverage
 
-    def decompose(self, maxiterations=3):
+
+    def compute_weights(self, clean_keys, **kwargs):
         """
-        Apply coupled decomposition to the images and
-        match identified sub-images
+        Computes a voronoi diagram for the overlap between two images
+        then gets the area of each polygon resulting in a voronoi weight.
+        These weights are then appended to the matches dataframe.
 
         Parameters
         ----------
-        maxiterations : int
-                        The number of iterations. Appropriate values:
-
-                        | Number of megapixels | k |
-                        |----------------------|---|
-                        | m < 10               |1-2|
-                        | 10 < m < 30          | 3 |
-                        | 30 < m < 100         | 4 |
-                        | 100 < m < 1000       | 5 |
-                        | m > 1000             | 6 |
-
+        clean_keys : list
+                     Of strings used to apply masks to omit correspondences
 
         """
-        pass
+        if not isinstance(self.matches, pd.DataFrame):
+            raise AttributeError('Matches have not been computed for this edge')
+        voronoi = cg.vor(self, clean_keys, **kwargs)
+        self.matches = pd.concat([self.matches, voronoi[1]['vor_weights']], axis=1)
 
-    def get_keypoints(self, node, clean_keys, homogeneous=False):
+
+    def compute_overlap(self, **kwargs):
         """
-
-        Returns a list of keypoint coordinates that match the specified
-        paramaters
-
-        Parameters
-        ----------
-        node :      str or Node
-                    Can be "source" or "destination" based on which node we're
-                    pulling keypoint data for; Also can pass Node obj itself
-
-        clean_keys :    list
-                        List of clean key strings
-
-        Return
-        ------
-        masked_keypts : Dataframe
-                        Dataframe of keypoints that match the specified masks
-                        on the specified node
+        Estimate a source and destination minimum bounding rectangle, in
+        pixel space
         """
+        self.overlap_latlon_coords, self["source_mbr"], self["destin_mbr"] = self.source.geodata.compute_overlap(self.destination.geodata, **kwargs)
 
-        # Assert parameter types are correct
-        try:
-            assert (isinstance(node, str) or isinstance(node, Node))
-        except AssertionError:
-            raise TypeError('Parameter "node" must be of type str or type Node')
-        try:
-            assert isinstance(clean_keys, list)
-        except AssertionError:
-            raise TypeError('Parameter "clean_keys" must be of type list')
-
-        # If node param is a string, make sure it's one of the right strings
-        if isinstance(node, str):
-            try:
-                assert (node in ["source", "destination"])
-                # Define the node if str is passed as param
-                if node == "source":
-                    node = self.source
-                elif node == "destination":
-                    node = self.destination
-            except AssertionError:
-                raise KeyError('node" parameter must be "source"' +
-                               'or "destination"')
-
-        # Get cleaned, combined src & dst keypt df for this edge ("matches")
-        matches, mask = self.clean(clean_keys)
-
-        # Grab the keypt indices filtered by clean_keys as ints, pandas
-        # complains when you use them as indicies if they're not ints
-        if node == self.source:
-            keypt_indices = matches["source_idx"].astype(int)
-        elif node == self.destination:
-            keypt_indices = matches["destination_idx"].astype(int)
-
-        # Get all keypts for the specified node
-        all_keypts = node.get_keypoints()
-        # Return keypts @ masked indecies for the node
-        masked_keypts = all_keypts.iloc[keypt_indices].sort_index()
-
-        if homogeneous:
-            masked_keypts['homogeneous'] = 1
-
-        return masked_keypts

@@ -1,27 +1,23 @@
-name: autocnet2
+name: autocnet
 channels:
   - conda-forge
   - jlaura
   - menpo
 dependencies:
   - python=3
-  - libpng
-  - opencv
-  - gdal
-  - h5py
   - cython
   - matplotlib
   - dill
   - jupyter
   - networkx
   - numexpr
-  - numpy>1.10.0
   - pandas
   - geopandas
   - shapely
   - pyyaml
-  - scipy>0.17.0
+  - scipy
   - sqlalchemy
+  - plio
   - pip:
     - pillow
     - pvl

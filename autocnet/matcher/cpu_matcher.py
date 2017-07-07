@@ -8,6 +8,106 @@ FLANN_INDEX_KDTREE = 1  # Algorithm to set centers,
 DEFAULT_FLANN_PARAMETERS = dict(algorithm=FLANN_INDEX_KDTREE, trees=3)
 
 
+def match(self, k=2, overlap=[], **kwargs):
+    """
+    Given two sets of descriptors, utilize a FLANN (Approximate Nearest
+    Neighbor KDTree) matcher to find the k nearest matches.  Nearness is
+    the euclidean distance between descriptors.
+
+    The matches are then added as an attribute to the edge object.
+
+    Parameters
+    ----------
+    k : int
+	The number of neighbors to find
+    """
+
+    def _add_matches(matches):
+        """
+        Given a dataframe of matches, either append to an existing
+        matches edge attribute or initially populate said attribute.
+
+        Parameters
+        ----------
+        matches : dataframe
+                  A dataframe of matches
+        """
+        if self.matches is None:
+            self.matches = matches
+        else:
+            df = self.matches
+            self.matches = df.append(matches,
+                                     ignore_index=True,
+                                     verify_integrity=True)
+
+    def mono_matches(a, b, aidx=None, bidx=None):
+        """
+	    Apply the FLANN match_features
+
+    	Parameters
+    	----------
+    	a : object
+    	    A node object
+
+    	b : object
+    	    A node object
+
+    	aidx : iterable
+    		An index for the descriptors to subset
+
+    	bidx : iterable
+    		An index for the descriptors to subset
+    	"""
+    	# Subset if requested
+        if aidx is not None:
+            ad = a.descriptors[aidx]
+        else:
+            ad = a.descriptors
+
+        if bidx is not None:
+            bd = b.descriptors[bidx]
+        else:
+            bd = b.descriptors
+
+        # Load, train, and match
+        fl.add(ad, a['node_id'], index=aidx)
+        fl.train()
+        matches = fl.query(bd, b['node_id'], k, index=bidx)
+        _add_matches(matches)
+        fl.clear()
+
+    fl = FlannMatcher()
+    
+    # Get the correct descriptors
+    # TODO: Extract into a helper function
+    if 'aidx' in kwargs.keys():
+        aidx = kwargs['aidx']
+        kwargs.pop('aidx')
+    elif overlap:
+        # Query the source keypoints for those in the MBR
+        source_mbr = overlap[0]
+        query_result = self.source.keypoints.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*source_mbr))
+        aidx = query_result.index
+    else:
+        aidx = None
+    
+    if 'bidx' in kwargs.keys():
+        bidx = kwargs['bidx']
+        kwargs.pop('bidx')
+    elif overlap:
+        destin_mbr = overlap[1]
+        query_result = self.destination.keypoints.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*destin_mbr))
+        bidx = query_result.index
+    else:
+        bidx = None
+
+    mono_matches(self.source, self.destination, aidx=aidx, bidx=bidx, **kwargs)
+    # Swap the indices since mono_matches is generic and source/destin are
+    # swapped
+    mono_matches(self.destination, self.source, aidx=bidx, bidx=aidx, **kwargs)
+    self.matches.sort_values(by=['distance'])
+
+
 class FlannMatcher(object):
     """
     A wrapper to the OpenCV Flann based matcher class that adds
@@ -122,6 +222,3 @@ class FlannMatcher(object):
         return pd.DataFrame(matched, columns=['source_image', 'source_idx',
                                               'destination_image', 'destination_idx',
                                               'distance']).astype(np.float32)
-
-def cudamatcher():
-    pass

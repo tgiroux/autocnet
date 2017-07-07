@@ -14,7 +14,7 @@ except Exception:  # pragma: no cover
     pass
 
 
-def extract_features(array, method='orb', extractor_parameters={}):
+def extract_features(array, extractor_method='sift', extractor_parameters={}):
     """
     This method finds and extracts features from an image using the given dictionary of keyword arguments.
     The input image is represented as NumPy array and the output features are represented as keypoint IDs
@@ -25,7 +25,7 @@ def extract_features(array, method='orb', extractor_parameters={}):
     array : ndarray
             a NumPy array that represents an image
 
-    method : {'orb', 'sift', 'fast', 'surf', 'vl_sift'}
+    extractor_method : {'orb', 'sift', 'fast', 'surf', 'vl_sift'}
               The detector method to be used.  Note that vl_sift requires that
               vlfeat and cyvlfeat dependencies be installed.
 
@@ -45,10 +45,10 @@ def extract_features(array, method='orb', extractor_parameters={}):
                  'surf': cv2.xfeatures2d.SURF_create,
                  'orb': cv2.ORB_create}
 
-    if method == 'vlfeat' and vlfeat != True:
+    if extractor_method == 'vlfeat' and vlfeat != True:
         raise ImportError('VLFeat is not available.  Please install vlfeat or use a different extractor.')
 
-    if  method == 'vlfeat':
+    if  extractor_method == 'vlfeat':
         keypoint_objs, descriptors  = vl.sift.sift(array,
                                                    compute_descriptor=True,
                                                    float_descriptors=True)
@@ -59,7 +59,7 @@ def extract_features(array, method='orb', extractor_parameters={}):
         # OpenCV requires the input images to be 8-bit
         if not array.dtype == 'int8':
             array = bytescale(array)
-        detector = detectors[method](**extractor_parameters)
+        detector = detectors[extractor_method](**extractor_parameters)
         keypoint_objs, descriptors = detector.detectAndCompute(array, None)
 
         keypoints = np.empty((len(keypoint_objs), 7), dtype=np.float32)
