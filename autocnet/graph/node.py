@@ -349,7 +349,7 @@ class Node(dict, MutableMapping):
             ystops = range(tilesize, array_size[1], stepsize)
             ytiles = list(zip(ystarts, ystops))
             ytiles.append((ytiles[-1][0] + stepsize, array_size[1]))
-        
+
         if tilesize >= array_size[0]:
             xtiles = [(0, array_size[0])]
         else:
@@ -564,7 +564,7 @@ class Node(dict, MutableMapping):
         matches = self.keypoints[mask]
         return matches, mask
 
-    def reproject_geom(self, coords):
+    def reproject_geom(self, coords):   # pragma: no cover
         """
         Reprojects a set of latlon coordinates into pixel space using the nodes
         geodata. These are then returned as a shapely polygon
