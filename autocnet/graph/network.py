@@ -768,7 +768,7 @@ class CandidateGraph(nx.Graph):
         else:
             return list(nx.find_cliques(self))
 
-    def compute_weight(self, clean_keys, **kwargs):
+    def compute_weight(self, clean_keys, **kwargs): # pragma: no cover
         """
         Computes a voronoi weight for each edge in a given graph.
         Can function as is, but is slightly optimized for complete subgraphs.
