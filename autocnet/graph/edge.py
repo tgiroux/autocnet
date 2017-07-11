@@ -45,6 +45,7 @@ class Edge(dict, MutableMapping):
         self['fundamental_matrix'] = None
         self.matches = pd.DataFrame()
         self.masks = pd.DataFrame()
+        self.subpixel = pd.DataFrame()
         self['weights'] = {}
         self['source_mbr'] = None
         self['destin_mbr'] = None
@@ -111,7 +112,7 @@ class Edge(dict, MutableMapping):
                   the source_mbr and destin_mbr attributes (stored in the
                   edge dict).
         """
-        pass    
+        pass
 
     def match_overlap(self, k=2, **kwargs):
         """
@@ -120,7 +121,7 @@ class Edge(dict, MutableMapping):
         """
         overlaps = [self['source_mbr'], self['destin_mbr']]
         self.match(k=k, overlap=overlaps, **kwargs)
-        
+
     def decompose(self):
         """
         Apply coupled decomposition to the images and
@@ -297,10 +298,9 @@ class Edge(dict, MutableMapping):
                       The maximum (positive) value that a pixel can shift in the y direction
                       without being considered an outlier
         """
-        matches = self.matches
-        for column, default in {'x_offset': 0, 'y_offset': 0, 'correlation': 0, 'reference': -1}.items():
-            if column not in self.matches.columns:
-                self.matches[column] = default
+        for column, default in {'join_idx': -1, 'x_offset': 0, 'y_offset': 0, 'correlation': 0, 'reference': -1}.items():
+            if column not in self.subpixel.columns:
+                self.subpixel[column] = default
 
         # Build up a composite mask from all of the user specified masks
         matches, mask = self.clean(clean_keys)
@@ -316,6 +316,7 @@ class Edge(dict, MutableMapping):
         source_image = (matches.iloc[0]['source_image'])
 
         # for each edge, calculate this for each keypoint pair
+        subpixel_offests = []
         for i, (idx, row) in enumerate(matches.iterrows()):
             s_idx = int(row['source_idx'])
             d_idx = int(row['destination_idx'])
@@ -328,17 +329,17 @@ class Edge(dict, MutableMapping):
             d_search = sp.clip_roi(d_img, d_keypoint, search_size)
             try:
                 x_offset, y_offset, strength = sp.subpixel_offset(s_template, d_search, **kwargs)
-                self.matches.loc[idx, ('x_offset', 'y_offset',
-                                       'correlation', 'reference')] = [x_offset, y_offset, strength, source_image]
+                self.subpixel.loc[i, ('join_idx', 'x_offset', 'y_offset', 'correlation', 'reference')]= [idx, x_offset, y_offset, strength, source_image]
             except:
                 warnings.warn('Template-Search size mismatch, failing for this correspondence point.')
 
+        print(self.subpixel)
         # Compute the mask for correlations less than the threshold
-        threshold_mask = self.matches['correlation'] >= threshold
+        threshold_mask = self.subpixel['correlation'] >= threshold
 
         # Compute the mask for the point shifts that are too large
         query_string = 'x_offset <= -{0} or x_offset >= {0} or y_offset <= -{1} or y_offset >= {1}'.format(max_x_shift,max_y_shift)
-        sp_shift_outliers = self.matches.query(query_string)
+        sp_shift_outliers = self.subpixel.query(query_string)
         shift_mask = pd.Series(True, index=self.matches.index)
         shift_mask.loc[sp_shift_outliers.index] = False
 
