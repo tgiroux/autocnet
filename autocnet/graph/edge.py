@@ -333,7 +333,6 @@ class Edge(dict, MutableMapping):
             except:
                 warnings.warn('Template-Search size mismatch, failing for this correspondence point.')
 
-        print(self.subpixel)
         # Compute the mask for correlations less than the threshold
         threshold_mask = self.subpixel['correlation'] >= threshold
 
