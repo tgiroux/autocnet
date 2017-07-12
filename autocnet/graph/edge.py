@@ -298,7 +298,7 @@ class Edge(dict, MutableMapping):
                       The maximum (positive) value that a pixel can shift in the y direction
                       without being considered an outlier
         """
-        for column, default in {'join_idx': -1, 'x_offset': 0, 'y_offset': 0, 'correlation': 0, 'reference': -1}.items():
+        for column, default in {'x_offset': 0, 'y_offset': 0, 'correlation': 0, 'reference': -1}.items():
             if column not in self.subpixel.columns:
                 self.subpixel[column] = default
 
@@ -329,7 +329,7 @@ class Edge(dict, MutableMapping):
             d_search = sp.clip_roi(d_img, d_keypoint, search_size)
             try:
                 x_offset, y_offset, strength = sp.subpixel_offset(s_template, d_search, **kwargs)
-                self.subpixel.loc[i, ('join_idx', 'x_offset', 'y_offset', 'correlation', 'reference')]= [idx, x_offset, y_offset, strength, source_image]
+                self.subpixel.loc[idx, ('x_offset', 'y_offset', 'correlation', 'reference')]= [x_offset, y_offset, strength, source_image]
             except:
                 warnings.warn('Template-Search size mismatch, failing for this correspondence point.')
 
@@ -339,7 +339,7 @@ class Edge(dict, MutableMapping):
         # Compute the mask for the point shifts that are too large
         query_string = 'x_offset <= -{0} or x_offset >= {0} or y_offset <= -{1} or y_offset >= {1}'.format(max_x_shift,max_y_shift)
         sp_shift_outliers = self.subpixel.query(query_string)
-        shift_mask = pd.Series(True, index=self.matches.index)
+        shift_mask = pd.Series(True, index=self.subpixel.index)
         shift_mask.loc[sp_shift_outliers.index] = False
 
         # Generate the composite mask and write the masks to the mask data structure
