@@ -1,6 +1,6 @@
 import json
 
-from functools import reduce
+from functools import reduce, singledispatch, update_wrapper
 
 import numpy as np
 import pandas as pd
@@ -340,4 +340,29 @@ def array_to_poly(array):
     geom = {"type": "Polygon", "coordinates": [geom_array]}
     poly = ogr.CreateGeometryFromJson(json.dumps(geom))
     return poly
-    
+
+
+def methdispatch(func):
+    """
+    New dispatch decorator that looks at the second argument to
+    avoid self
+
+    Parameters
+    ----------
+    func : Object
+        Function object to be dispatched
+
+    Returns
+    wrapper : Object
+        Wrapped function call chosen by the dispatcher
+    ----------
+
+    """
+    dispatcher = singledispatch(func)
+
+    def wrapper(*args, **kw):
+        return dispatcher.dispatch(args[1].__class__)(*args, **kw)
+
+    wrapper.register = dispatcher.register
+    update_wrapper(wrapper, dispatcher)
+    return wrapper

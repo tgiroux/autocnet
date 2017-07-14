@@ -1,4 +1,4 @@
-from functools import wraps
+from functools import wraps, singledispatch
 import warnings
 from collections import MutableMapping
 
@@ -11,6 +11,7 @@ from scipy.spatial.distance import cdist
 import autocnet
 from autocnet.graph.node import Node
 from autocnet.utils import utils
+# from autocnet.utils.utils import methdispatch
 from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.matcher import suppression_funcs as spf
 from autocnet.matcher import subpixel as sp
@@ -199,20 +200,18 @@ class Edge(dict, MutableMapping):
             # Set the initial state of the fundamental mask in the masks
             self.masks[maskname] = mask
 
+    @utils.methdispatch
     def get_keypoints(self, node, index=None, homogeneous=False):
-        print(type(node))
-        if type(node) is str:
-            node = node.lower()
-            if node == "source" or node == "destination":
-                node = getattr(self, node)
-            else:
-                raise KeyError
-        elif type(node) is not Node:
-            raise TypeError
-        print(hasattr(index, '__iter__'))
-        print(index is not None)
         if not hasattr(index, '__iter__') and index is not None:
             raise TypeError
+        return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
+
+    @get_keypoints.register(str)
+    def _(self, node, index=None, homogeneous=False):
+        if not hasattr(index, '__iter__') and index is not None:
+            raise TypeError
+        node = node.lower()
+        node = getattr(self, node)
         return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
 
     def compute_fundamental_error(self, clean_keys=[]):

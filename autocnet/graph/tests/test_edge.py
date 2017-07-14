@@ -170,10 +170,10 @@ class TestEdge(unittest.TestCase):
         # Assert type-checking in method throws proper errors
         with self.assertRaises(TypeError):
             e.get_keypoints("source", index = 456)
-        with self.assertRaises(TypeError):
+        with self.assertRaises(AttributeError):
             e.get_keypoints(1)
         # Check key error thrown when string arg != "source" or "destination"
-        with self.assertRaises(KeyError):
+        with self.assertRaises(AttributeError):
             e.get_keypoints("string")
 
     def test_eq(self):
