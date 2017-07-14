@@ -342,7 +342,7 @@ def array_to_poly(array):
     return poly
 
 
-def methdispatch(func):
+def methodispatch(func):
     """
     New dispatch decorator that looks at the second argument to
     avoid self

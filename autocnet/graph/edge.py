@@ -11,7 +11,6 @@ from scipy.spatial.distance import cdist
 import autocnet
 from autocnet.graph.node import Node
 from autocnet.utils import utils
-# from autocnet.utils.utils import methdispatch
 from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.matcher import suppression_funcs as spf
 from autocnet.matcher import subpixel as sp
@@ -201,7 +200,7 @@ class Edge(dict, MutableMapping):
             # Set the initial state of the fundamental mask in the masks
             self.masks[maskname] = mask
 
-    @utils.methdispatch
+    @utils.methodispatch
     def get_keypoints(self, node, index=None, homogeneous=False):
         if not hasattr(index, '__iter__') and index is not None:
             raise TypeError

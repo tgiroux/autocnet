@@ -148,7 +148,7 @@ class TestUtils(unittest.TestCase):
                 for k, v in kwargs.items():
                     setattr(self, k, v)
 
-            @utils.methdispatch
+            @utils.methodispatch
             def get(self, arg):
                 return getattr(self, arg, None)
 
