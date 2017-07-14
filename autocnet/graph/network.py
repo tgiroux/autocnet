@@ -787,7 +787,7 @@ class CandidateGraph(nx.Graph):
 
         for s, d, edge in self.edges_iter(data=True):
             source_node = edge.source
-            intersect_gdf = self.compute_intersection(self, source_node, clean_keys)
+            intersect_gdf = self.compute_intersection(source_node, clean_keys = clean_keys)
 
             matches, _ = edge.clean(clean_keys)
             kps = edge.get_keypoints(edge.source, index=matches['source_idx'])[['x', 'y']]
@@ -801,7 +801,7 @@ class CandidateGraph(nx.Graph):
             kps_mask = kps['geometry'][initial_mask].apply(lambda x: reproj_geom.contains(x))
             voronoi_df = compute_voronoi(kps[initial_mask][kps_mask], reproj_geom, **kwargs)
 
-            edge['weights']['vor_weight'] = voronoi_df['weight']
+            edge['weights']['voronoi'] = voronoi_df
 
     def compute_intersection(self, source, clean_keys=[]):
         """
@@ -850,8 +850,8 @@ class CandidateGraph(nx.Graph):
         intersect_gdf = gpd.overlay(source_gdf, proj_gdf, how='intersection')
         intersect_gdf['overlaps_all'] = intersect_gdf.geometry.apply(lambda x:proj_gdf.geometry.contains(shapely.affinity.scale(x, .9, .9)).all())
 
-        # If there is no polygon that overlaps all of the images, union all of the polygons into one large
-        # polygon that does overlap all of the images
+        # If there is no intersection polygon that overlaps all of the images, union all of the intersection
+        # polygons into one large polygon that does overlap all of the images
         if len(intersect_gdf.query("overlaps_all == True")) <= 0:
             new_poly = shapely.ops.unary_union(intersect_gdf.geometry)
             intersect_gdf.loc[len(intersect_gdf)] = [source['node_id'], source['node_id'], new_poly, True]

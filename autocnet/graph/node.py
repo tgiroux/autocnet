@@ -582,5 +582,5 @@ class Node(dict, MutableMapping):
         reproj = []
 
         for x, y in coords:
-            reproj.append(self.geodata.latlon_to_pixel(x, y))
+            reproj.append(self.geodata.latlon_to_pixel(y, x))
         return Polygon(reproj)
