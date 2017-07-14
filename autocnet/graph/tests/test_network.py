@@ -199,17 +199,8 @@ def test_intersection():
         cang.node[n] = new_node
 
     # Create the edges between the nodes in the graph
-    cang.add_edge(0, 1)
-    cang.add_edge(0, 2)
-    cang.add_edge(0, 3)
-    cang.add_edge(2, 3)
-    cang.add_edge(3, 4)
-    cang.add_edge(4, 5)
-    cang.add_edge(5, 6)
-    cang.add_edge(6, 7)
-    cang.add_edge(7, 4)
-    cang.add_edge(4, 6)
-    cang.add_edge(5, 7)
+    cang.add_edges_from([(0, 1), (0, 2), (0, 3), (2, 3), (3, 4), (4, 5),
+                                            (5, 6), (6, 7), (7, 4), (4, 6), (5, 7)])
 
     # Define source and destination for each edge
     for s, d in cang.edges():
@@ -247,3 +238,12 @@ def test_update_data(graph):
    ntime = graph.graph['modifieddate']
    assert ctime != ntime
 
+
+def test_is_complete(graph):
+    # Create a small incomplete graph with three nodes and two edges
+    incomplete_graph = network.CandidateGraph()
+    incomplete_graph.add_nodes_from([1, 2, 3])
+    incomplete_graph.add_edges_from([(1, 2), (2, 3)])
+
+    assert False == incomplete_graph.is_complete()
+    assert True == graph.is_complete()

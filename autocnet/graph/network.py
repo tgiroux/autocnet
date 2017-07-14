@@ -781,20 +781,16 @@ class CandidateGraph(nx.Graph):
         clean_keys : list
                      Strings used to apply masks to omit correspondences
         """
-        neighbors_dict = nx.degree(self)
-        if False in list(all(value == len(self.neighbors(self.nodes()[0])) for value in neighbors_dict.values())):
+
+        if not self.is_complete():
             warnings.warn('The given graph is not complete and may yield garbage.')
 
-        source_node = self.nodes(data=True)[0][1]
-        intersect_gdf = self.compute_intersection(self, source_node, clean_keys)
-
         for s, d, edge in self.edges_iter(data=True):
-            # Recompute the intersection if the source node of the n + 1 edge is different from the n edge
-            if s != source_node['node_id']:
-                source_node = edge.source
-                intersect_gdf = self.compute_intersection(self, source_node, clean_keys)
+            source_node = edge.source
+            intersect_gdf = self.compute_intersection(self, source_node, clean_keys)
 
-            kps = edge.get_keypoints('source', clean_keys=clean_keys)[['x', 'y']]
+            matches, _ = edge.clean(clean_keys)
+            kps = edge.get_keypoints(edge.source, index=matches['source_idx'])[['x', 'y']]
             reproj_geom = source_node.reproject_geom(intersect_gdf.query("overlaps_all == True").geometry.values[0].__geo_interface__['coordinates'][0])
             initial_mask = geom_mask(kps, reproj_geom)
 
@@ -859,3 +855,16 @@ class CandidateGraph(nx.Graph):
             intersect_gdf.loc[len(intersect_gdf)] = [source['node_id'], source['node_id'], new_poly, True]
 
         return intersect_gdf
+
+    def is_complete(self):
+        """
+        Checks if the graph is a complete graph
+        """
+        neighbors_dict = nx.degree(self)
+        for value in neighbors_dict.values():
+            if value == len(self.neighbors(self.nodes()[0])):
+                continue
+            else:
+                return False
+
+        return True
