@@ -831,19 +831,21 @@ class CandidateGraph(nx.Graph):
         source_gdf = gpd.GeoDataFrame({'geometry': [source_poly], 'source_node': [source['node_id']]})
 
         proj_gdf = gpd.GeoDataFrame(columns=['geometry', 'proj_node'])
-
-        # Begin iterating through the edges in the graph that contain the source
+        proj_poly_list = []
+        proj_node_list = []
+        # Begin iterating through the edges in the graph that include the source node
         for s, d, edge in self.edges_iter(data=True):
-            # May want to use a try except block here, but what error to raise?
             if s == source['node_id']:
                 proj_poly = swkt.loads(edge.destination.geodata.footprint.GetGeometryRef(0).ExportToWkt())
-                proj_gdf.loc[len(proj_gdf)] = [proj_poly, d]
+                proj_poly_list.append(proj_poly)
+                proj_node_list.append(d)
+
             elif d == source['node_id']:
                 proj_poly = swkt.loads(edge.source.geodata.footprint.GetGeometryRef(0).ExportToWkt())
-                proj_gdf.loc[len(proj_gdf)] = [proj_poly, s]
-            else:
-                continue
+                proj_poly_list.append(proj_poly)
+                proj_node_list.append(s)
 
+        proj_gdf = gpd.GeoDataFrame({"geometry": proj_poly_list, "proj_node": proj_node_list})
         # Overlay the all geometry and find the one geometry element that overlaps all of the images
         intersect_gdf = gpd.overlay(source_gdf, proj_gdf, how='intersection')
         intersect_gdf['overlaps_all'] = intersect_gdf.geometry.apply(lambda x:proj_gdf.geometry.contains(shapely.affinity.scale(x, .9, .9)).all())
