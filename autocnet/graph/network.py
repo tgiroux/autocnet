@@ -5,11 +5,18 @@ from time import gmtime, strftime
 import warnings
 
 import networkx as nx
+import geopandas as gpd
 import pandas as pd
+import shapely.affinity
+import shapely.geometry
+import shapely.wkt as swkt
+import shapely.ops
 
 from plio.io import io_hdf, io_json
 from plio.utils import utils as io_utils
 from plio.io.io_gdal import GeoDataset
+from autocnet.cg.cg import geom_mask
+from autocnet.cg.cg import compute_voronoi
 from autocnet.graph import markov_cluster
 from autocnet.graph.edge import Edge
 from autocnet.graph.node import Node
@@ -739,3 +746,127 @@ class CandidateGraph(nx.Graph):
         """
         edges = [(u, v) for u, v, edge in self.edges_iter(data=True) if func(edge, *args, **kwargs)]
         return self.create_edge_subgraph(edges)
+
+    def compute_cliques(self, node_id=None):  # pragma: no cover
+        """
+        Computes all maximum complete subgraphs for the given graph.
+        If a node_id is given, method will return only the complete subgraphs that
+        contain that node
+
+        Parameters
+        ----------
+        node_id : int
+                       Integer value for a given node
+
+        Returns
+        -------
+        : list
+          A list of lists of node ids that make up maximum complete subgraphs of the given graph
+        """
+        if node_id is not None:
+            return list(nx.cliques_containing_node(self, nodes=node_id))
+        else:
+            return list(nx.find_cliques(self))
+
+    def compute_weight(self, clean_keys, **kwargs): # pragma: no cover
+        """
+        Computes a voronoi weight for each edge in a given graph.
+        Can function as is, but is slightly optimized for complete subgraphs.
+
+        Parameters
+        ----------
+        kwargs : dict
+                      keyword arguments that get passed to compute_voronoi
+
+        clean_keys : list
+                     Strings used to apply masks to omit correspondences
+        """
+
+        if not self.is_complete():
+            warnings.warn('The given graph is not complete and may yield garbage.')
+
+        for s, d, edge in self.edges_iter(data=True):
+            source_node = edge.source
+            intersect_gdf = self.compute_intersection(source_node, clean_keys = clean_keys)
+
+            matches, _ = edge.clean(clean_keys)
+            kps = edge.get_keypoints(edge.source, index=matches['source_idx'])[['x', 'y']]
+            reproj_geom = source_node.reproject_geom(intersect_gdf.query("overlaps_all == True").geometry.values[0].__geo_interface__['coordinates'][0])
+            initial_mask = geom_mask(kps, reproj_geom)
+
+            if (len(kps[initial_mask]) <= 0):
+                continue
+
+            kps['geometry'] = kps.apply(lambda x: shapely.geometry.Point(x['x'], x['y']), axis=1)
+            kps_mask = kps['geometry'][initial_mask].apply(lambda x: reproj_geom.contains(x))
+            voronoi_df = compute_voronoi(kps[initial_mask][kps_mask], reproj_geom, **kwargs)
+
+            edge['weights']['voronoi'] = voronoi_df
+
+    def compute_intersection(self, source, clean_keys=[]):
+        """
+        Computes the intercetion of all images in a graph
+        based around a given source node
+
+        Parameters
+        ----------
+        source: object or int
+                     Either a networkx Node object or an integer
+
+        clean_keys : list
+                           Strings used to apply masks to omit correspondences
+
+        Returns
+        -------
+        intersect_gdf : dataframe
+                               A geopandas dataframe of intersections for all images
+                               that overlap with the source node. Also includes the common
+                               overlap for all images in the source node.
+        """
+        if type(source) is int:
+            source = self.node[source]
+        # May want to use a try except block here, but what error to raise?
+        source_poly = swkt.loads(source.geodata.footprint.GetGeometryRef(0).ExportToWkt())
+
+        source_gdf = gpd.GeoDataFrame({'geometry': [source_poly], 'source_node': [source['node_id']]})
+
+        proj_gdf = gpd.GeoDataFrame(columns=['geometry', 'proj_node'])
+        proj_poly_list = []
+        proj_node_list = []
+        # Begin iterating through the edges in the graph that include the source node
+        for s, d, edge in self.edges_iter(data=True):
+            if s == source['node_id']:
+                proj_poly = swkt.loads(edge.destination.geodata.footprint.GetGeometryRef(0).ExportToWkt())
+                proj_poly_list.append(proj_poly)
+                proj_node_list.append(d)
+
+            elif d == source['node_id']:
+                proj_poly = swkt.loads(edge.source.geodata.footprint.GetGeometryRef(0).ExportToWkt())
+                proj_poly_list.append(proj_poly)
+                proj_node_list.append(s)
+
+        proj_gdf = gpd.GeoDataFrame({"geometry": proj_poly_list, "proj_node": proj_node_list})
+        # Overlay the all geometry and find the one geometry element that overlaps all of the images
+        intersect_gdf = gpd.overlay(source_gdf, proj_gdf, how='intersection')
+        intersect_gdf['overlaps_all'] = intersect_gdf.geometry.apply(lambda x:proj_gdf.geometry.contains(shapely.affinity.scale(x, .9, .9)).all())
+
+        # If there is no intersection polygon that overlaps all of the images, union all of the intersection
+        # polygons into one large polygon that does overlap all of the images
+        if len(intersect_gdf.query("overlaps_all == True")) <= 0:
+            new_poly = shapely.ops.unary_union(intersect_gdf.geometry)
+            intersect_gdf.loc[len(intersect_gdf)] = [source['node_id'], source['node_id'], new_poly, True]
+
+        return intersect_gdf
+
+    def is_complete(self):
+        """
+        Checks if the graph is a complete graph
+        """
+        neighbors_dict = nx.degree(self)
+        for value in neighbors_dict.values():
+            if value == len(self.neighbors(self.nodes()[0])):
+                continue
+            else:
+                return False
+
+        return True

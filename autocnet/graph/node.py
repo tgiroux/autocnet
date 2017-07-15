@@ -8,6 +8,7 @@ import pandas as pd
 from plio.io.io_gdal import GeoDataset
 from plio.io.isis_serial_number import generate_serial_number
 from scipy.misc import bytescale, imresize
+from shapely.geometry import Polygon
 
 from autocnet.cg import cg
 from autocnet.control.control import Correspondence, Point
@@ -348,7 +349,7 @@ class Node(dict, MutableMapping):
             ystops = range(tilesize, array_size[1], stepsize)
             ytiles = list(zip(ystarts, ystops))
             ytiles.append((ytiles[-1][0] + stepsize, array_size[1]))
-        
+
         if tilesize >= array_size[0]:
             xtiles = [(0, array_size[0])]
         else:
@@ -562,3 +563,24 @@ class Node(dict, MutableMapping):
         mask = panel[clean_keys].all(axis=1)
         matches = self.keypoints[mask]
         return matches, mask
+
+    def reproject_geom(self, coords):   # pragma: no cover
+        """
+        Reprojects a set of latlon coordinates into pixel space using the nodes
+        geodata. These are then returned as a shapely polygon
+
+        Parameters
+        ----------
+        coords : ndarray
+                      (n, 2) array of latlon coordinates
+
+        Returns
+        ----------
+        : object
+          A shapely polygon object made using the reprojected coordinates
+        """
+        reproj = []
+
+        for x, y in coords:
+            reproj.append(self.geodata.latlon_to_pixel(y, x))
+        return Polygon(reproj)

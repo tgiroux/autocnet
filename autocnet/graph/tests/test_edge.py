@@ -61,10 +61,11 @@ class TestEdge(unittest.TestCase):
                             [0, 3, 1, 3],
                             [0, 4, 1, 4]]
 
-        matches_df = pd.DataFrame(keypoint_matches, columns = ['source_image', 'source_idx', 'destination_image', 'destination_idx'])
+        matches_df = pd.DataFrame(data=keypoint_matches, columns=['source_image', 'source_idx', 'destination_image', 'destination_idx'])
+
         e = edge.Edge()
-        source_node = MagicMock(spec = node.Node())
-        destination_node = MagicMock(spec = node.Node())
+        source_node = MagicMock(spec=node.Node())
+        destination_node = MagicMock(spec=node.Node())
 
         source_node.get_keypoint_coordinates = MagicMock(return_value=keypoint_df)
         destination_node.get_keypoint_coordinates = MagicMock(return_value=keypoint_df)
@@ -72,8 +73,8 @@ class TestEdge(unittest.TestCase):
         e.source = source_node
         e.destination = destination_node
 
-        source_geodata = Mock(spec = io_gdal.GeoDataset)
-        destination_geodata = Mock(spec = io_gdal.GeoDataset)
+        source_geodata = Mock(spec=io_gdal.GeoDataset)
+        destination_geodata = Mock(spec=io_gdal.GeoDataset)
 
         e.source.geodata = source_geodata
         e.destination.geodata = destination_geodata
@@ -96,134 +97,84 @@ class TestEdge(unittest.TestCase):
         def pixel_to_latlon(i, j):
             return vals[(i, j)]
 
-        e.source.geodata.pixel_to_latlon = MagicMock(side_effect = pixel_to_latlon)
-        e.destination.geodata.pixel_to_latlon = MagicMock(side_effect = pixel_to_latlon)
+        e.source.geodata.pixel_to_latlon = MagicMock(side_effect=pixel_to_latlon)
+        e.destination.geodata.pixel_to_latlon = MagicMock(side_effect=pixel_to_latlon)
 
         e.matches = matches_df
 
         #self.assertRaises(AttributeError, cg.edge[0][1].coverage)
         self.assertEqual(e.coverage(), 0.3)
 
-    def test_voronoi_transform(self):
-        keypoint_df = pd.DataFrame({'x': (15, 18, 18, 12, 12), 'y': (5, 10, 15, 15, 10)})
-        keypoint_matches = [[0, 0, 1, 0],
-                            [0, 1, 1, 1],
+    def test_get_keypoints(self):
+        src_keypoint_df = pd.DataFrame({'x': (0, 1, 2, 3, 4), 'y': (5, 6, 7, 8, 9),
+                                        'response': (10, 11, 12, 13, 14), 'size': (15, 16, 17, 18, 19),
+                                        'angle': (20, 21, 22, 23, 24), 'octave': (25, 26, 27, 28, 29),
+                                        'layer': (30, 31, 32, 33, 34)})
+
+        dst_keypoint_df = pd.DataFrame({'x': (34, 33, 32, 31, 30), 'y': (29, 28, 27, 26, 25),
+                                        'response': (24, 23, 22, 21, 20), 'size': (19, 18, 17, 16, 15),
+                                        'angle': (14, 13, 12, 11, 10), 'octave': (9, 8, 7, 6, 5),
+                                        'layer': (4, 3, 2, 1, 0)})
+
+        keypoint_matches = [[0, 0, 1, 4],
+                            [0, 1, 1, 3],
                             [0, 2, 1, 2],
-                            [0, 3, 1, 3],
-                            [0, 4, 1, 4]]
+                            [0, 3, 1, 1],
+                            [0, 4, 1, 0]]
 
         matches_df = pd.DataFrame(data=keypoint_matches, columns=['source_image', 'source_idx',
                                                                   'destination_image', 'destination_idx'])
+
         e = edge.Edge()
+        source_node = node.Node()
+        destination_node = node.Node()
 
-        e.clean = MagicMock(return_value=(matches_df, None))
-        e.matches = matches_df
-
-        source_node = MagicMock(spec=node.Node())
-        destination_node = MagicMock(spec=node.Node())
-
-        source_node.get_keypoint_coordinates = MagicMock(return_value=keypoint_df)
-        destination_node.get_keypoint_coordinates = MagicMock(return_value=keypoint_df)
+        source_node.get_keypoint_coordinates = MagicMock(return_value=src_keypoint_df)
+        destination_node.get_keypoint_coordinates = MagicMock(return_value=dst_keypoint_df)
 
         e.source = source_node
         e.destination = destination_node
 
-        source_geodata = Mock(spec=io_gdal.GeoDataset)
-        destination_geodata = Mock(spec=io_gdal.GeoDataset)
-
-        e.source.geodata = source_geodata
-        e.destination.geodata = destination_geodata
-
-        source_corners = [(0, 0),
-                          (20, 0),
-                          (20, 20),
-                          (0, 20)]
-
-        destination_corners = [(10, 5),
-                               (30, 5),
-                               (30, 25),
-                               (10, 25)]
-
-        source_poly = array_to_poly(source_corners)
-        destination_poly = array_to_poly(destination_corners)
-
-        def latlon_to_pixel(i, j):
-            return vals[(i, j)]
-
-        e.source.geodata.latlon_to_pixel = MagicMock(side_effect=latlon_to_pixel)
-        e.destination.geodata.latlon_to_pixel = MagicMock(side_effect=latlon_to_pixel)
-
-        e.source.geodata.footprint = source_poly
-        e.source.geodata.xy_corners = source_corners
-        e.destination.geodata.footprint = destination_poly
-        e.destination.geodata.xy_corners = destination_corners
-
-        vals = {(10, 5): (10, 5), (20, 5): (20, 5), (20, 20): (20, 20), (10, 20): (10, 20)}
-
-        weights = pd.DataFrame({"vor_weights": (19, 28, 37.5, 37.5, 28)})
-
-        e.compute_weights(clean_keys=[])
-
-        k = 0
-        for i in e.matches['vor_weights']:
-            self.assertAlmostEquals(i, weights['vor_weights'][k])
-            k += 1
-
-    def test_voronoi_homography(self):
-        source_keypoint_df = pd.DataFrame({'x': (15, 18, 18, 12, 12), 'y': (5, 10, 15, 15, 10)})
-        destination_keypoint_df = pd.DataFrame({'x': (5, 8, 8, 2, 2), 'y': (0, 5, 10, 10, 5)})
-        keypoint_matches = [[0, 0, 1, 0],
-                            [0, 1, 1, 1],
-                            [0, 2, 1, 2],
-                            [0, 3, 1, 3],
-                            [0, 4, 1, 4]]
-
-        matches_df = pd.DataFrame(data = keypoint_matches, columns=['source_image', 'source_idx',
-                                                                    'destination_image', 'destination_idx'])
-        e = edge.Edge()
 
         e.clean = MagicMock(return_value=(matches_df, None))
         e.matches = matches_df
 
-        source_node = MagicMock(spec=node.Node())
-        destination_node = MagicMock(spec=node.Node())
+        # Test all uses for edge.get_keypoints()
+        src_matched_keypts = e.get_keypoints("source")
+        src_matched_keypts2 = e.get_keypoints(e.source)
+        dst_matched_keypts = e.get_keypoints("destination")
+        dst_matched_keypts2 = e.get_keypoints(e.destination)
 
-        source_node.get_keypoint_coordinates = MagicMock(return_value=source_keypoint_df)
-        destination_node.get_keypoint_coordinates = MagicMock(return_value=destination_keypoint_df)
+        # [output df to test] [name of node] [df to test against]
+        to_test = [[src_matched_keypts, "source", src_keypoint_df],
+                   [src_matched_keypts2, "source", src_keypoint_df],
+                   [dst_matched_keypts, "destination", dst_keypoint_df],
+                   [dst_matched_keypts2, "destination", dst_keypoint_df]]
 
-        e.source = source_node
-        e.destination = destination_node
+        for out_df in to_test:
+            # For each row index in the appropriate column of the matches_df,
+            # assert that row index exists in the function's returned df
+            [self.assertIn(row_idx, out_df[0].index.values)
+             for row_idx in matches_df[out_df[1] + '_idx']]
+            # For each row index in the returned df
+            for row_idx in out_df[0].index.values:
+                # Assert that row_idx exists in the matches_df's appropriate
+                # column
+                self.assertIn(row_idx, matches_df[out_df[1] + '_idx'])
+                # Assert that all row_idx[column] vals returned by function
+                # match their counterpart in orig df
+                for column in out_df[0].columns:
+                    self.assertTrue(out_df[0].iloc[row_idx][column] ==
+                                            out_df[2].iloc[row_idx][column])
 
-        source_geodata = Mock(spec=io_gdal.GeoDataset)
-        destination_geodata = Mock(spec=io_gdal.GeoDataset)
-
-        e.source.geodata = source_geodata
-        e.destination.geodata = destination_geodata
-
-        source_corners = [(0, 0),
-                          (20, 0),
-                          (20, 20),
-                          (0, 20)]
-
-        destination_corners = [(0, 0),
-                               (20, 0),
-                               (20, 20),
-                               (0, 20)]
-
-        e.source.geodata.coordinate_transformation.this = None
-        e.destination.geodata.coordinate_transformation.this = None
-
-        e.source.geodata.xy_corners = source_corners
-        e.destination.geodata.xy_corners = destination_corners
-
-        weights = pd.DataFrame({"vor_weights": (19, 28, 37.5, 37.5, 28)})
-
-        e.compute_weights(clean_keys=[])
-
-        k = 0
-        for i in e.matches['vor_weights']:
-            self.assertAlmostEquals(i, weights['vor_weights'][k])
-            k += 1
+        # Assert type-checking in method throws proper errors
+        with self.assertRaises(TypeError):
+            e.get_keypoints("source", index = 456)
+        with self.assertRaises(AttributeError):
+            e.get_keypoints(1)
+        # Check key error thrown when string arg != "source" or "destination"
+        with self.assertRaises(AttributeError):
+            e.get_keypoints("string")
 
     def test_eq(self):
         edge1 = edge.Edge()

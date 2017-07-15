@@ -1,9 +1,10 @@
-from functools import wraps
+from functools import wraps, singledispatch
 import warnings
 from collections import MutableMapping
 
 import numpy as np
 import pandas as pd
+import networkx as nx
 
 from scipy.spatial.distance import cdist
 
@@ -199,7 +200,17 @@ class Edge(dict, MutableMapping):
             # Set the initial state of the fundamental mask in the masks
             self.masks[maskname] = mask
 
-    def get_keypoints(self, node, index=None, homogeneous=True):
+    @utils.methodispatch
+    def get_keypoints(self, node, index=None, homogeneous=False):
+        if not hasattr(index, '__iter__') and index is not None:
+            raise TypeError
+        return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
+
+    @get_keypoints.register(str)
+    def _(self, node, index=None, homogeneous=False):
+        if not hasattr(index, '__iter__') and index is not None:
+            raise TypeError
+        node = node.lower()
         node = getattr(self, node)
         return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
 
@@ -220,8 +231,7 @@ class Edge(dict, MutableMapping):
                 of reprojective error indexed to the matches data frame
         """
         if self['fundamental_matrix'] is None:
-            warning.warn('No fundamental matrix has been compute for this edge.'
-            )
+            warnings.warn('No fundamental matrix has been compute for this edge.')
         matches, masks = self.clean(clean_keys)
 
         source_kps = self.source.get_keypoint_coordinates(index=matches['source_idx'])
@@ -501,8 +511,6 @@ class Edge(dict, MutableMapping):
             raise AttributeError('Matches have not been computed for this edge')
         voronoi = cg.vor(self, clean_keys, **kwargs)
         self.matches = pd.concat([self.matches, voronoi[1]['vor_weights']], axis=1)
-
-
 
     def compute_overlap(self, **kwargs):
         """

@@ -4,9 +4,18 @@ import unittest
 sys.path.insert(0, os.path.abspath('..'))
 
 import numpy as np
+import pandas as pd
 
 from .. import cg
 from osgeo import ogr
+from shapely.geometry import Polygon
+from unittest.mock import Mock, MagicMock
+from plio.io import io_gdal
+
+from autocnet.graph.node import Node
+from autocnet.graph.network import CandidateGraph
+from autocnet.graph.edge import Edge
+from autocnet.utils.utils import array_to_poly
 
 
 class TestArea(unittest.TestCase):
@@ -33,3 +42,34 @@ class TestArea(unittest.TestCase):
         self.assertEqual(info[1], 400)
         self.assertAlmostEqual(info[0], 14.285714285)
 
+    def test_geom_mask(self):
+        my_gdf = pd.DataFrame(columns=['x', 'y'], data=[(0, 0), (2, 2)])
+        my_poly = Polygon([(1, 1), (3, 1), (3, 3), (1, 3)])
+        mask = cg.geom_mask(my_gdf, my_poly)
+        self.assertFalse(mask[0])
+        self.assertTrue(mask[1])
+
+    def test_compute_voronoi(self):
+        keypoints = pd.DataFrame({'x': (15, 18, 18, 12, 12), 'y': (6, 10, 15, 15, 10)})
+        intersection = Polygon([(10, 5), (20, 5), (20, 20), (10, 20)])
+
+        voronoi_gdf = cg.compute_voronoi(keypoints)
+        self.assertAlmostEquals(voronoi_gdf.weight[0], 12.0)
+        self.assertAlmostEquals(voronoi_gdf.weight[1], 13.5)
+        self.assertAlmostEquals(voronoi_gdf.weight[2], 7.5)
+        self.assertAlmostEquals(voronoi_gdf.weight[3], 7.5)
+        self.assertAlmostEquals(voronoi_gdf.weight[4], 13.5)
+
+        voronoi_gdf = cg.compute_voronoi(keypoints, geometry=True)
+        self.assertAlmostEquals(voronoi_gdf.geometry[0].area, 12.0)
+        self.assertAlmostEquals(voronoi_gdf.geometry[1].area, 13.5)
+        self.assertAlmostEquals(voronoi_gdf.geometry[2].area, 7.5)
+        self.assertAlmostEquals(voronoi_gdf.geometry[3].area, 7.5)
+        self.assertAlmostEquals(voronoi_gdf.geometry[4].area, 13.5)
+
+        voronoi_inter_gdf = cg.compute_voronoi(keypoints, intersection)
+        self.assertAlmostEquals(voronoi_inter_gdf.weight[0], 22.5)
+        self.assertAlmostEquals(voronoi_inter_gdf.weight[1], 26.25)
+        self.assertAlmostEquals(voronoi_inter_gdf.weight[2], 37.5)
+        self.assertAlmostEquals(voronoi_inter_gdf.weight[3], 37.5)
+        self.assertAlmostEquals(voronoi_inter_gdf.weight[4], 26.25)

@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+
 from autocnet.examples import get_path
 from plio.io.io_gdal import GeoDataset
 
@@ -57,7 +58,6 @@ class TestNode(object):
         assert len(node.keypoints) in range(8,12)
         assert node.keypoints['x'].max() > 500
 
-
     def test_extract_tiled_features(self, node):
         tilesize = 500
         node.extract_features_with_tiling(tilesize=tilesize, overlap=50,
@@ -80,6 +80,14 @@ class TestNode(object):
         # Convex hull computation is checked lower in the hull computation
         #self.assertRaises(AttributeError, node.coverage_ratio)
         pass
+
+    def test_coverage(self):
+        image = self.node.get_array()
+        self.node.extract_features(image, method='sift', extractor_parameters={'nfeatures': 10})
+
+        coverage_percn = self.node.coverage()
+
+        self.assertAlmostEqual(coverage_percn, 38.06139557)
 
     def test_isis_serial(self, node):
         serial = node.isis_serial

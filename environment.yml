@@ -12,6 +12,8 @@ dependencies:
   - networkx
   - numexpr
   - pandas
+  - geopandas
+  - shapely
   - pyyaml
   - scipy
   - sqlalchemy
