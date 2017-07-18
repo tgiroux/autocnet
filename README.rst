@@ -15,12 +15,12 @@ AutoCNet
 .. image:: https://coveralls.io/repos/USGS-Astrogeology/autocnet/badge.svg?branch=master&service=github
     :target: https://coveralls.io/github/USGS-Astrogeology/autocnet?branch=master
 
-.. image:: https://readthedocs.org/projects/autocnet/badge/?version=latest
-    :target: http://autocnet.readthedocs.org/en/latest/
+.. image:: https://img.shields.io/badge/Docs-latest-green.svg
+    :target: hhttps://usgs-astrogeology.github.io/autocnet/
     :alt: Documentation Status
 
-.. image:: https://badge.waffle.io/USGS-Astrogeology/autocnet.png?label=ready&title=Ready 
- :target: https://waffle.io/USGS-Astrogeology/autocnet 
+.. image:: https://badge.waffle.io/USGS-Astrogeology/autocnet.png?label=ready&title=Ready
+ :target: https://waffle.io/USGS-Astrogeology/autocnet
  :alt: 'Stories in Ready'
 
 Automated sparse control network generation to support photogrammetric control of planetary image data.
