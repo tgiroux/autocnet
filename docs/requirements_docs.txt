@@ -1,8 +1,0 @@
-pvl
-pandas
-networkx
-sqlalchemy
-matplotlib
-numpy
-scipy
-nbsphinx

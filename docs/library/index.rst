@@ -5,14 +5,8 @@ Library Reference
 :Release: |version|
 :Date: |today|
 
-AutoCNet
-========
-
-Sub-packages
-------------
-
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 3
 
    cg/index
    control/index
@@ -20,6 +14,5 @@ Sub-packages
    graph/index
    matcher/index
    transformation/index
-   spectral/index
    utils/index
    vis/index
