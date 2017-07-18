@@ -201,18 +201,30 @@ class Edge(dict, MutableMapping):
             self.masks[maskname] = mask
 
     @utils.methodispatch
-    def get_keypoints(self, node, index=None, homogeneous=False):
+    def get_keypoints(self, node, index=None, homogeneous=False, overlap=False):
         if not hasattr(index, '__iter__') and index is not None:
             raise TypeError
-        return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
+        keypts = node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
+        # If we only want keypoints in the overlap
+        if overlap:
+            # Compute overlap if we don't have it
+            if not self["source_mbr"] or self["destin_mbr"]:
+                self.compute_overlap()
+            # Create overlap's bounding polygon in pixel space
+            bounds_poly = node.reproject_geom(self.overlap_latlon_coords)
+            # Mask for node keypts based on bounding poly
+            overlap_mask = cg.geom_mask(node.keypoints, bounds_poly)
+            # Return masked keypts
+            return keypts[overlap_mask]
+        return keypts
 
     @get_keypoints.register(str)
-    def _(self, node, index=None, homogeneous=False):
+    def _(self, node, index=None, homogeneous=False, overlap=False):
         if not hasattr(index, '__iter__') and index is not None:
             raise TypeError
         node = node.lower()
         node = getattr(self, node)
-        return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
+        return self.get_keypoints(node, index=index, homogeneous=homogeneous, overlap=overlap)
 
     def compute_fundamental_error(self, clean_keys=[]):
         """
