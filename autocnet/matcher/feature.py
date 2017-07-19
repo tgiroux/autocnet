@@ -122,6 +122,3 @@ class FlannMatcher(object):
         return pd.DataFrame(matched, columns=['source_image', 'source_idx',
                                               'destination_image', 'destination_idx',
                                               'distance']).astype(np.float32)
-
-def cudamatcher():
-    pass
