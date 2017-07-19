@@ -442,6 +442,18 @@ class CandidateGraph(nx.Graph):
         '''
         self.apply_func_to_edges('ratio_check', *args, **kwargs)
 
+    def compute_overlaps(self, *args, **kwargs):
+        '''
+        Computes overlap MBRs for all edges
+        '''
+        self.apply_func_to_edges('compute_overlap', *args, **kwargs)
+
+    def overlap_checks(self, *args, **kwargs):
+        '''
+        Apply overlap check to all edges in the graph
+        '''
+        self.apply_func_to_edges('overlap_check', *args, **kwargs)
+
     def compute_homographies(self, *args, **kwargs):
         '''
         Compute homographies for all edges using identical parameters

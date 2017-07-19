@@ -5,6 +5,7 @@ import ogr
 import numpy as np
 import pandas as pd
 from plio.io import io_gdal
+from shapely.geometry import Polygon as Poly
 
 from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.examples import get_path
@@ -135,7 +136,6 @@ class TestEdge(unittest.TestCase):
         e.source = source_node
         e.destination = destination_node
 
-
         e.clean = MagicMock(return_value=(matches_df, None))
         e.matches = matches_df
 
@@ -166,6 +166,41 @@ class TestEdge(unittest.TestCase):
                 for column in out_df[0].columns:
                     self.assertTrue(out_df[0].iloc[row_idx][column] ==
                                             out_df[2].iloc[row_idx][column])
+
+        # Test when overlap=True
+        # edge["source_mbr"] and edge["destin_mbr"] haven't been calculated
+        # yet, so return val should be unmasked df of node's keypts
+        s_no_overlap = e.get_keypoints(e.source, overlap=True)
+        d_no_overlap = e.get_keypoints(e.destination, overlap=True)
+        self.assertTrue(s_no_overlap.equals(src_keypoint_df))
+        self.assertTrue(d_no_overlap.equals(dst_keypoint_df))
+
+        # Define the MBRs
+        e.overlap_latlon_coords = 0, 0
+
+        source_node.reproject_geom = MagicMock(return_value=Poly([(1, 6), (1, 8), (3, 6), (3, 8)]))
+        source_node.keypoints = src_keypoint_df
+
+        destination_node.reproject_geom = MagicMock(return_value=Poly([(31, 26), (31, 28), (33, 26), (33, 28)]))
+        destination_node.keypoints = dst_keypoint_df
+
+        # Only keep keypt vals w/I these bounding rects
+        e["source_mbr"] = (0, 2, 8, 5)
+        e["destin_mbr"] = (31, 33, 28, 26)
+
+        # Grab the keypoints on our MBR overlaps
+        s_overlap = e.get_keypoints(e.source, overlap=True)
+        d_overlap = e.get_keypoints(e.destination, overlap=True)
+
+        # Assert masked src keypts coords are equal
+        s_expected = pd.DataFrame({'x': (1, 2, 3), 'y': (6, 7, 8)})
+        self.assertTrue(np.array_equal(s_expected['x'], s_overlap['x'].values))
+        self.assertTrue(np.array_equal(s_expected['y'], s_overlap['y'].values))
+
+        # Assert masked dst keypt coords are equal
+        d_expected = pd.DataFrame({'x': (33, 32, 31), 'y': (28, 27, 26)})
+        self.assertTrue(np.array_equal(d_expected['x'], d_overlap['x'].values))
+        self.assertTrue(np.array_equal(d_expected['y'], d_overlap['y'].values))
 
         # Assert type-checking in method throws proper errors
         with self.assertRaises(TypeError):
@@ -241,3 +276,57 @@ class TestEdge(unittest.TestCase):
         expected = list(od.distance_ratio(matches_df))
         e.ratio_check()
         self.assertEqual(expected, list(e.masks["ratio"]))
+
+    def test_overlap_check(self):
+        s = node.Node()
+        d = node.Node()
+
+        e = edge.Edge()
+        e.source = s
+        e.destination = d
+
+        src_keypoint_df = pd.DataFrame({'x': (0, 1, 2, 3, 4), 'y': (5, 6, 7, 8, 9)})
+        dst_keypoint_df = pd.DataFrame({'x': (34, 33, 32, 31, 30), 'y': (29, 28, 27, 26, 25)})
+
+        # Create keypt matches
+        keypoint_matches = [[0, 0, 1, 4, 5],
+                            [0, 1, 1, 3, 5],
+                            [0, 2, 1, 2, 5],
+                            [0, 3, 1, 1, 5],
+                            [0, 4, 1, 0, 5]]
+
+        matches_df = pd.DataFrame(data=keypoint_matches,
+                                  columns=['source_image', 'source_idx',
+                                           'destination_image', 'destination_idx', 'distance'])
+        s.keypoints = src_keypoint_df
+        d.keypoints = dst_keypoint_df
+        e.matches = matches_df
+
+        s_overlap_keypts = pd.DataFrame({'x': (0, 1), 'y': (5, 6)})
+        d_overlap_keypts = pd.DataFrame({'x': (31, 30), 'y': (26, 25)}, index=[3, 4])
+        expected_mask = pd.Series(data=[True, True, False, False, False])
+
+        # Mockup of the Edge.get_keypoints() method when overlap=True
+        def mock_get_keypts(node, overlap=False):
+            if node == s and overlap:
+                return s_overlap_keypts
+            elif node == d and overlap:
+                return d_overlap_keypts
+            else:
+                return None
+
+        e.get_keypoints = MagicMock(side_effect=mock_get_keypts)
+
+        # Should fail if no src & dst mbrs on edge; Warns user & mask isn't
+        # populated
+        e.overlap_check()
+        self.assertTrue("overlap" not in e.masks)
+
+        # Should work after MBRs are set
+        e["source_mbr"] = (1, 1, 1, 1)
+        e["destin_mbr"] = (1, 1, 1, 1)
+        e.overlap_check()
+        overlap_matches, overlap_mask = e.clean(clean_keys=['overlap'])
+
+        self.assertTrue(expected_mask.equals(overlap_mask))
+        self.assertTrue(overlap_matches.equals(e.matches[overlap_mask]))
