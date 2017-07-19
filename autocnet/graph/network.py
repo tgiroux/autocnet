@@ -9,6 +9,7 @@ import pandas as pd
 from plio.io import io_hdf, io_json
 from plio.utils import utils as io_utils
 from plio.io.io_gdal import GeoDataset
+from autocnet.control.control import generate_control_network
 from autocnet.graph import markov_cluster
 from autocnet.graph.edge import Edge
 from autocnet.graph.node import Node
@@ -185,6 +186,17 @@ class CandidateGraph(nx.Graph):
 
         """
         return self.node[node_index]['image_name']
+
+    def get_matches(self, clean_keys=[]):
+        matches = []
+        for s, d, e in self.edges_iter(data=True):
+            match, _ = e.clean(clean_keys=clean_keys)
+            match = match[['source_image', 'source_idx',
+                           'destination_image', 'destination_idx']]
+
+            print(type(s))
+            matches.append(match)
+        return matches
 
     def add_image(self, *args, **kwargs):
         """
@@ -444,24 +456,20 @@ class CandidateGraph(nx.Graph):
             filelist.append(node['image_path'])
         return filelist
 
-    def generate_cnet(self, *args, deepen=False, **kwargs):
+    def generate_control_network(self, clean_keys=['fundamental']):
         """
-        Compute (or re-compute) a CorrespondenceNetwork attribute
+        Generate a correspondence graph from the current candidate graph object.
+        The control network is a single graph object, composed of n-sub graphs,
+        where each sub-graph is the aggregation of all assocaited correspondences.
 
         Parameters
         ----------
-        deepen : bool
-                 Whether or not to attempt to punch through correspondences.  Default: False
-
-        See Also
-        --------
-        autocnet.graph.node.Node
+        clean_keys : list
+                     of strings used to mask the matches on each edge of the
+                     Candidate Graph object
 
         """
-        for i, n in self.nodes_iter(data=True):
-            n.group_correspondences(self, *args, deepen=deepen, **kwargs)
-        self.cn = [n.point_to_correspondence_df for i, n in self.nodes_iter(data=True) if
-                   isinstance(n.point_to_correspondence_df, pd.DataFrame)]
+        return generate_control_network(self)
 
     def island_nodes(self):
         """
