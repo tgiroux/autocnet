@@ -1,9 +1,10 @@
 import json
 
-from functools import reduce
+from functools import reduce, singledispatch, update_wrapper
 
 import numpy as np
 import pandas as pd
+import networkx as nx
 
 from osgeo import ogr
 
@@ -341,48 +342,27 @@ def array_to_poly(array):
     return poly
 
 
-def reproj_corner(H, corner):
+def methodispatch(func):
     """
-    Reproject a pixel in one image into another image
+    New dispatch decorator that looks at the second argument to
+    avoid self
 
     Parameters
     ----------
-    H : object
-        (3,3) ndarray or Homography object
-
-    corner : iterable
-             A 2 element iterable in the form x, y
-    """
-    if len(corner) == 2:
-        coords = np.array([corner[0], corner[1], 1])
-    elif len(corner) == 3:
-        coords = np.asarray(corner)
-        coords *= coords[-1]
-    return H.dot(coords)
-
-
-def scale_point(point, centroid, scale):
-    """
-    Given a point, centroid, and a scalar scales the given pointer
-    around the given centroid
-
-    Parameters
-    ----------
-    point : tuple
-            (x, y) coordinates for a given point
-
-    centroid : tuple
-               (x, y, 0) coordinates for the centroid of a polygon
-
-    scale : int
-            The multiplier to scale by
+    func : Object
+        Function object to be dispatched
 
     Returns
-    -------
-    vector : ndarray
-             (2, 1) array of the scaled point returned in x, y form
+    wrapper : Object
+        Wrapped function call chosen by the dispatcher
+    ----------
+
     """
-    point = np.asarray(point)
-    centroid = centroid[:2]
-    vector = ((point - centroid)*scale) + centroid
-    return vector
+    dispatcher = singledispatch(func)
+
+    def wrapper(*args, **kw):
+        return dispatcher.dispatch(args[1].__class__)(*args, **kw)
+
+    wrapper.register = dispatcher.register
+    update_wrapper(wrapper, dispatcher)
+    return wrapper

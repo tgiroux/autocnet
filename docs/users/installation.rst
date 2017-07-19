@@ -1,40 +1,45 @@
-.. _installation:
+Installation
+============
 
-================
-Install AutoCNet
-================
+We provide AutoCnet as a binary package via conda and for
+installation via the standard setup.py script.
 
+Via Conda
+---------
 
-Download and setup:
--------------------
-(**While these steps are not necessary, it is highly recommended that you follow them.**)
+1. [Download](https://www.continuum.io/downloads) and install the Python 3.x Miniconda installer.  Respond ``Yes`` when
+   prompted to add conda to your BASH profile.
+1. (Optional) We like to sequester applications in their own environments to avoid any dependency conflicts.  To do this:
+  * ``conda create -n <your_environment_name> python=3 && source activate <your_environment_name>``
+1. Bring up a command line and add three channels to your conda config (``~/condarc``):
+  * ``conda config --add channels conda-forge``
+  * ``conda condig --add channels jlaura``
+  * ``conda config --add channels menpo``
+1. Finally, install autocnet: ``conda install -c jlaura autocnet-dev``
 
-Begin by accessing the Anaconda download website at:
+Via setup.py
+------------
+This method assumes that you have the necessary dependencies already
+installed. The installation of dependencies can be non-trivial because of GDAL.
+We supply an ``environment.yml`` file that works with Anaconda Python's ``conda
+env`` environment management tool.
 
-- https://www.continuum.io/downloads.
+Manual Development Environment
+------------------------------
+To manually install AutoCnet (for example in a development environment) we must install the necessary dependencies.
 
-Choose the appropriate version for your system, this will be the linux version if you are on Fedora. Next, follow the instructions on Anacondas website for installation onto your system.
+1. Create a virtual environment:  ``conda create -n autocnet python=3.5 && source activate autocnet``
+2. As above, add conda-forge to the channel list.
+3. To install the planetary I/O module and the OpenCV computer vision module: ``conda install -c jlaura plio opencv3``
+4. To install the optional VLFeature module (for SIFT): ``conda install -c conda-forge vlfeat``
+4a. To install the Cython wrapper to vlfeat: ``conda install -c menpo cyvlfeat``
+5. To install PIL and PySAL: ``pip install pillow pysal``
+6. To install additional conda packages: ``conda install scipy networkx numexpr dill cython pyyaml matplotlib``
 
-After the installer has finished, it will ask to prepend the path to your .bashrc file. You'll want to say yes as this is necessary for the rest of the installation process.
-If you don't you will need to access your .bashrc file and add:
+This ensures that all dependencies needed to run AutoCnet are availble.  We also have development dependencies to
+support automated testing, documentation builds, etc.
 
-- export PATH="(path to anaconda file)/anaconda3/bin:$PATH"
-
-Replacing the (path to anaconda) with the appropriate directory sequence that points to the anaconda3 file.
-
-Next, create and activate a new conda environment using these commands::
-
-    $conda create --name enter environment name
-    $source activate environment name
-
-After that finishes you'll have the base setup for a new Anaconda environment that can contain AutoCnet.
-
-Installing AutoCnet:
---------------------
-To start enter::
-
-    $ placeholder command
-
-This command accesses a binstar that holds the Autocnet package along with all of the other packages that AutoCnet uses.
-
-When it finishes downloading, you have installed AutoCnet and setup your anaconda environment.
+1. Install Nose and Sphinx: ``conda install nose sphinx``
+2. Install coveralls: ``pip install coveralls``
+3. Install the nbsphinx plugin: ``pip install nbshpinx``
+4. Install Jupyter for notebook support: ``conda install jupyter``

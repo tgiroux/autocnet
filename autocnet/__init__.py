@@ -11,7 +11,10 @@ import autocnet.graph
 import autocnet.matcher
 import autocnet.transformation
 import autocnet.utils
-import autocnet.utils
+
+
+# Patch the candidate graph into the root namespace
+from autocnet.graph.network import CandidateGraph
 
 __version__ = "0.1.0"
 
@@ -39,15 +42,16 @@ def cuda(enable=False, gpu=0):
 
             from autocnet.matcher.cuda_decompose import decompose_and_match
             Edge.decompose_and_match = decompose_and_match
+
         except Exception:
-            warning.warn('Failed to enable Cuda')
+            warnings.warn('Failed to enable Cuda')
         return
 
     # Here is where the CPU methods get patched into the class
-    from autocnet.matcher.feature_extractor import extract_features
+    from autocnet.matcher.cpu_extractor import extract_features
     Node._extract_features = staticmethod(extract_features)
 
-    from autocnet.matcher.feature_matcher import match
+    from autocnet.matcher.cpu_matcher import match
     Edge.match = match
 
     from autocnet.matcher.cpu_decompose import decompose_and_match

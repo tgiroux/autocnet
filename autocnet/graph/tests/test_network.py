@@ -1,4 +1,5 @@
 import os
+import time
 import sys
 
 import pytest
@@ -7,12 +8,15 @@ import unittest
 from unittest.mock import patch
 from unittest.mock import PropertyMock
 from osgeo import ogr
+from unittest.mock import MagicMock
+from plio.io import io_gdal
 
 import numpy as np
 
 from autocnet.examples import get_path
 
 from .. import network
+from .. import node
 
 sys.path.insert(0, os.path.abspath('..'))
 
@@ -27,10 +31,12 @@ def graph():
 def disconnected_graph():
     return network.CandidateGraph.from_adjacency(get_path('adjacency.json'))
 
+
 def test_get_name(graph):
     node_number = graph.graph['node_name_map']['AS15-M-0297_SML.png']
     name = graph.get_name(node_number)
     assert name == 'AS15-M-0297_SML.png'
+
 
 def test_size(graph):
     assert graph.size() == graph.number_of_edges()
@@ -39,17 +45,21 @@ def test_size(graph):
 
     assert graph.size('edge_weight') == graph.number_of_edges()*10
 
+
 def test_add_image(graph):
     with pytest.raises(NotImplementedError):
         graph.add_image()
 
+
 def test_island_nodes(disconnected_graph):
     assert len(disconnected_graph.island_nodes()) == 1
+
 
 def test_triangular_cycles(graph):
     cycles = graph.compute_triangular_cycles()
     # Node order is variable, length is not
     assert len(cycles) == 1
+
 
 def test_connected_subgraphs(graph, disconnected_graph):
     subgraph_list = disconnected_graph.connected_subgraphs()
@@ -61,23 +71,8 @@ def test_connected_subgraphs(graph, disconnected_graph):
     subgraph_list = graph.connected_subgraphs()
     assert len(subgraph_list) == 1
 
-def test_save_load_features(tmpdir, graph):
-    # Create the graph and save the features
-    graph = graph.copy()
-    graph.extract_features(extractor_parameters={'nfeatures': 10})
-    allout = tmpdir.join("all_out.hdf")
-    oneout = tmpdir.join("one_out.hdf")
-
-    graph.save_features(allout.strpath, format='hdf')
-    graph.save_features(oneout.strpath, nodes=[1], format='hdf')
-
-    graph_no_features = graph.copy()
-    graph_no_features.load_features(allout.strpath, nodes=[1], format='hdf')
-    assert graph.node[1].get_keypoints().all().all() == graph_no_features.node[1].get_keypoints().all().all()
 
 def test_filter(graph):
-    def edge_func(edge):
-        return edge.matches is not None and hasattr(edge, 'matches')
     graph = graph.copy()
     test_sub_graph = graph.create_node_subgraph([0, 1])
 
@@ -85,10 +80,11 @@ def test_filter(graph):
     test_sub_graph.match(k=2)
 
     filtered_nodes = graph.filter_nodes(lambda node: node.descriptors is not None)
-    filtered_edges = graph.filter_edges(edge_func)
+    filtered_edges = graph.filter_edges(lambda edge: edge.matches.empty is not True)
 
     assert filtered_nodes.number_of_nodes() == test_sub_graph.number_of_nodes()
     assert filtered_edges.number_of_edges() == test_sub_graph.number_of_edges()
+
 
 def test_subset_graph(graph):
     g = graph
@@ -98,6 +94,7 @@ def test_subset_graph(graph):
     node_sub = g.create_node_subgraph([0, 1])
     assert len(node_sub) == 2
 
+
 def test_subgraph_from_matches(graph):
     test_sub_graph = graph.create_node_subgraph([0, 1])
     test_sub_graph.extract_features(extractor_parameters={'nfeatures': 25})
@@ -106,6 +103,7 @@ def test_subgraph_from_matches(graph):
     sub_graph_from_matches = graph.subgraph_from_matches()
 
     assert test_sub_graph.edges() == sub_graph_from_matches.edges()
+
 
 def test_minimum_spanning_tree():
     test_dict = {"0": ["4", "2", "1", "3"],
@@ -122,6 +120,7 @@ def test_minimum_spanning_tree():
 
     assert sorted(mst_graph.nodes()) == sorted(graph.nodes())
     assert len(mst_graph.edges()) == len(graph.edges())-5
+
 
 def test_fromlist():
     mock_list = ['AS15-M-0295_SML.png', 'AS15-M-0296_SML.png', 'AS15-M-0297_SML.png',
@@ -147,6 +146,7 @@ def test_fromlist():
     n = network.CandidateGraph.from_filelist(get_path('adjacency.lis'), get_path('Apollo15'))
     assert len(n.nodes()) == 6
 
+
 def test_apply_func_to_edges(graph):
     graph = graph.copy()
     mst_graph = graph.minimum_spanning_tree()
@@ -165,3 +165,85 @@ def test_apply_func_to_edges(graph):
 
     assert not graph[0][2].masks['symmetry'].all()
     assert not graph[0][1].masks['symmetry'].all()
+
+
+def test_intersection():
+    # Generate the footprints for the mock nodes
+    ogr_poly_list = []
+    wkt0 = "MULTIPOLYGON (((2.5 7.5,7.5 7.5,7.5 12.5,2.5 12.5,2.5 7.5)))"
+    ogr_poly_list.append(ogr.CreateGeometryFromWkt(wkt0))
+    wkt1 = "MULTIPOLYGON (((0 10, 5 10, 5 15, 0 15, 0 10)))"
+    ogr_poly_list.append(ogr.CreateGeometryFromWkt(wkt1))
+    wkt2 = "MULTIPOLYGON (((5.5 5.0,10.5 5.0,10.5 10.0,5.5 10.0,5.5 5.0)))"
+    ogr_poly_list.append(ogr.CreateGeometryFromWkt(wkt2))
+    wkt3 = "MULTIPOLYGON (((5.5 7.5,10.5 7.5,10.5 12.5,5.5 12.5,5.5 7.5)))"
+    ogr_poly_list.append(ogr.CreateGeometryFromWkt(wkt3))
+    wkt4 = "MULTIPOLYGON (((8 11,13 11,13 16,8 16,8 11)))"
+    ogr_poly_list.append(ogr.CreateGeometryFromWkt(wkt4))
+    wkt5 = "MULTIPOLYGON (((8 14,13 14,13 19,8 19,8 14)))"
+    ogr_poly_list.append(ogr.CreateGeometryFromWkt(wkt5))
+    wkt6 = "MULTIPOLYGON (((11 11,16 11,16 16,11 16,11 11)))"
+    ogr_poly_list.append(ogr.CreateGeometryFromWkt(wkt6))
+    wkt7 = "MULTIPOLYGON (((11 14,16 14,16 19,11 19,11 14)))"
+    ogr_poly_list.append(ogr.CreateGeometryFromWkt(wkt7))
+
+    # Create the graph and all the mocked nodes
+    cang = network.CandidateGraph()
+    for n in range(0, 8):
+        cang.add_node(n)
+        new_node = MagicMock(spec=node.Node())
+        geodata = MagicMock(spec=io_gdal.GeoDataset)
+        new_node.geodata = geodata
+        geodata.footprint = ogr_poly_list[n]
+        new_node.__getitem__ = MagicMock(return_value=n)
+        cang.node[n] = new_node
+
+    # Create the edges between the nodes in the graph
+    cang.add_edges_from([(0, 1), (0, 2), (0, 3), (2, 3), (3, 4), (4, 5),
+                                            (5, 6), (6, 7), (7, 4), (4, 6), (5, 7)])
+
+    # Define source and destination for each edge
+    for s, d in cang.edges():
+        if s > d:
+            s, d = d, s
+        e = cang.edge[s][d]
+        e.source = cang.node[s]
+        e.destination = cang.node[d]
+
+    intersect_gdf = cang.compute_intersection(3)
+
+    # Test the correct areas were found
+    assert intersect_gdf.geometry[0].area == 7.5
+    assert intersect_gdf.geometry[1].area == 5
+    assert intersect_gdf.geometry[2].area == 5
+    assert intersect_gdf.geometry[3].area == 3.75
+    assert intersect_gdf.geometry[4].area == 21.25
+    # Check if the correct poly was determined to overlap all other images
+    assert intersect_gdf.overlaps_all[4] == True
+
+
+def test_set_maxsize(graph):
+    maxsizes = network.MAXSIZE
+    assert(graph.maxsize == maxsizes[0])
+    graph.maxsize = 12
+    assert(graph.maxsize == maxsizes[12])
+    with pytest.raises(KeyError):
+        graph.maxsize = 7
+
+
+def test_update_data(graph):
+   ctime = graph.graph['modifieddate']
+   time.sleep(1)
+   graph._update_date()
+   ntime = graph.graph['modifieddate']
+   assert ctime != ntime
+
+
+def test_is_complete(graph):
+    # Create a small incomplete graph with three nodes and two edges
+    incomplete_graph = network.CandidateGraph()
+    incomplete_graph.add_nodes_from([1, 2, 3])
+    incomplete_graph.add_edges_from([(1, 2), (2, 3)])
+
+    assert False == incomplete_graph.is_complete()
+    assert True == graph.is_complete()

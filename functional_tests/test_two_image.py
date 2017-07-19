@@ -48,7 +48,7 @@ class TestTwoImageMatching(unittest.TestCase):
         self.assertEqual(1, cg.number_of_edges())
 
         # Step: Extract image data and attribute nodes
-        cg.extract_features(method='sift', extractor_parameters={"nfeatures":500})
+        cg.extract_features(extractor_method='sift', extractor_parameters={"nfeatures":500})
         for i, node in cg.nodes_iter(data=True):
             self.assertIn(node.nkeypoints, range(490, 510))
 
@@ -63,11 +63,21 @@ class TestTwoImageMatching(unittest.TestCase):
         # Create fundamental matrix
         cg.compute_fundamental_matrices()
 
+        for s, d, e in cg.edges_iter(data=True):
+            assert isinstance(e['fundamental_matrix'], np.ndarray)
+            err = e.compute_fundamental_error(clean_keys=['fundamental'])
+            assert isinstance(err, pd.Series)
+            matches, _ = e.clean(clean_keys=['fundamental'])
+            assert matches.index.all() == err.index.all()
+                    
+
         # Apply AMNS
         cg.suppress(k=30, suppression_func=error)
 
         # Step: Compute subpixel offsets for candidate points
+        cg.subpixel_register(clean_keys=['suppression'], tiled=True)
         cg.subpixel_register(clean_keys=['suppression'])
+        
 
 
         # Step: And create a C object

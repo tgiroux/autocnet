@@ -1,8 +1,17 @@
+import warnings
+
 import pandas as pd
 import numpy as np
+import networkx as nx
+import geopandas as gpd
+import ogr
 
 from scipy.spatial import ConvexHull
 from scipy.spatial import Voronoi
+import shapely.geometry
+from shapely.geometry import Polygon, Point
+from shapely.affinity import scale
+# from shapely.ops import unary_union
 import cv2
 
 from autocnet.utils import utils
@@ -51,6 +60,32 @@ def convex_hull(points):
 
     hull = ConvexHull(points)
     return hull
+
+
+def geom_mask(keypoints, geom): # ADDED
+    """
+    Masks any points that are outside of the bounds of the given
+    geometry.
+
+    Parameters
+    ----------
+    keypoints : dataframe
+                      A pandas dataframe of points to mask
+
+    geom : object
+                Shapely geometry object to use as a mask
+    """
+
+    def _in_mbr(r, mbr):
+        if (mbr[0] <= r.x <= mbr[2]) and (mbr[1] <= r.y <= mbr[3]):
+            return True
+        else:
+            return False
+
+    mbr = geom.bounds
+    initial_mask = keypoints.apply(_in_mbr, axis=1, args=(mbr,))
+
+    return initial_mask
 
 
 def two_poly_overlap(poly1, poly2):
@@ -106,113 +141,62 @@ def get_area(poly1, poly2):
     return intersection_area
 
 
-def vor(edge, clean_keys=[], s=30):
+def compute_voronoi(keypoints, intersection=None, geometry=False, s=30): # ADDED
         """
-        Creates a voronoi diagram for an edge using either the coordinate
-        transformation or using the homography between source and destination.
-
-        The coordinate transformation uses the footprint of source and destination to
-        calculate an intersection between the two images, then transforms the vertices of
-        the intersection back into pixel space.
-
-        If a coordinate transform does not exist, use the homography to project the destination image
-        onto the source image, producing an area of intersection.
-
-        The intersection vertices are then scaled by a factor of s (default 30), this accounts for the
-        areas of the voronoi that would be missed if the scaled vertices were not included into the
-        voronoi calculation.
-
+        Creates a voronoi diagram for all edges in a graph, and assigns a given
+        weight to each edge. This is based around voronoi polygons generated
+        by scipy's voronoi method, to determine if an image has significant coverage.
 
         Parameters
         ----------
-        edge : object
-               An edge object
+        graph : object
+               A networkx graph object
 
         clean_keys : list
                      Of strings used to apply masks to omit correspondences
 
         s : int
-            offset for the corners of the image
-
-        Returns
-        -------
-        vor : object
-              Scipy Voronoi object
-
-        voronoi_df : dataframe
-                     3 column pandas dataframe of x, y, and weights
-
+            Offset for the corners of the image
         """
-        source_corners = edge.source.geodata.xy_corners
-        destination_corners = edge.destination.geodata.xy_corners
+        vor_keypoints = []
 
-        matches, _ = edge.clean(clean_keys=clean_keys)
+        keypoints.apply(lambda x: vor_keypoints.append((x['x'], x['y'])), axis = 1)
 
-        source_keypoints_pd = edge.source.get_keypoint_coordinates(index=matches['source_idx'],
-                                                                   homogeneous=True)
-        destination_keypoints_pd = edge.destination.get_keypoint_coordinates(index=matches['destination_idx'],
-                                                                             homogeneous=True)
+        if intersection is None:
+            keypoint_bounds = Polygon(vor_keypoints).bounds
+            intersection = shapely.geometry.box(keypoint_bounds[0], keypoint_bounds[1],
+                                                    keypoint_bounds[2], keypoint_bounds[3])
 
-        if edge.source.geodata.coordinate_transformation.this is not None:
-            source_footprint_poly = edge.source.geodata.footprint
-            destination_footprint_poly = edge.destination.geodata.footprint
+        scaled_coords = np.array(scale(intersection, s, s).exterior.coords)
 
-            intersection_poly = destination_footprint_poly.Intersection(source_footprint_poly)
-            intersection_geom = intersection_poly.GetGeometryRef(0)
-            intersect_points = intersection_geom.GetPoints()
-
-            intersection_points = [edge.source.geodata.latlon_to_pixel(lat, lon) for lat, lon in intersect_points]
-
+        vor_keypoints = np.vstack((vor_keypoints, scaled_coords))
+        vor = Voronoi(vor_keypoints)
+        # Might move the code below to its own method depending on feedback
+        if geometry:
+            voronoi_df = gpd.GeoDataFrame(data = keypoints, columns=['x', 'y', 'weight', 'geometry'])
         else:
-            H, mask = cv2.findHomography(destination_keypoints_pd.values,
-                                         source_keypoints_pd.values,
-                                         cv2.RANSAC,
-                                         2.0)
+            voronoi_df = gpd.GeoDataFrame(data = keypoints, columns=['x', 'y', 'weight'])
 
-            proj_corners = []
-            for c in destination_corners:
-                x, y, h = utils.reproj_corner(H, c)
-                x /= h
-                y /= h
-                h /= h
-                proj_corners.append((x, y))
+        i = 0
+        vor_points = np.asarray(vor.points)
+        for region in vor.regions:
+            region_point = vor_points[np.argwhere(vor.point_region==i)]
 
-            orig_poly = utils.array_to_poly(source_corners)
-            proj_poly = utils.array_to_poly(proj_corners)
-
-            intersection_poly = orig_poly.Intersection(proj_poly)
-            intersection_geom = intersection_poly.GetGeometryRef(0)
-            intersection_points = intersection_geom.GetPoints()
-
-        centroid = intersection_poly.Centroid().GetPoint()
-
-        voronoi_df = pd.DataFrame(data=source_keypoints_pd, columns=["x", "y", "vor_weights"])
-
-        voronoi_df["x"] = source_keypoints_pd['x']
-        voronoi_df["y"] = source_keypoints_pd['y']
-        keypoints = np.asarray(source_keypoints_pd)
-
-        inters = np.empty((len(intersection_points), 2))
-        for g, (i, j) in enumerate(intersection_points):
-            scaledx, scaledy = utils.scale_point((i, j), centroid, s)
-            point = np.array([scaledx, scaledy])
-            inters[g] = point
-
-        keypoints = np.vstack((keypoints[:, :2], inters))
-        vor = Voronoi(keypoints)
-
-        poly_array = []
-        for i, region in enumerate(vor.regions):
-            region_point = vor.points[np.argwhere(vor.point_region==i)]
-            if -1 not in region:
+            if not -1 in region:
                 polygon_points = [vor.vertices[i] for i in region]
+
                 if len(polygon_points) != 0:
-                    polygon = utils.array_to_poly(polygon_points)
-                    intersection = polygon.Intersection(intersection_poly)
-                    poly_array = np.append(poly_array, intersection)
-                    polygon_area = intersection.GetArea()
+                    polygon = Polygon(polygon_points)
+
+                    intersection_poly = polygon.intersection(intersection)
+
                     voronoi_df.loc[(voronoi_df["x"] == region_point[0][0][0]) &
                                    (voronoi_df["y"] == region_point[0][0][1]),
-                                   'vor_weights'] = polygon_area
+                                   'weight'] = intersection_poly.area
+                    if geometry:
+                        voronoi_df.loc[(voronoi_df["x"] == region_point[0][0][0]) &
+                                       (voronoi_df["y"] == region_point[0][0][1]),
+                                       'geometry'] = intersection_poly
+            i += 1
 
-        return vor, voronoi_df
+        return voronoi_df

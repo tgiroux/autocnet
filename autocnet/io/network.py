@@ -51,29 +51,31 @@ def save(network, projectname):
 
         # Write the array node_attributes to hdf
         for n, data in network.nodes_iter(data=True):
-            grp = data['node_id']
-            np.savez('{}.npz'.format(data['node_id']),
-                     descriptors=data.descriptors,
-                     keypoints=data._keypoints,
-                     keypoints_idx=data._keypoints.index,
-                     keypoints_columns=data._keypoints.columns)
-            pzip.write('{}.npz'.format(data['node_id']))
-            os.remove('{}.npz'.format(data['node_id']))
+            if data.descriptors is not None:
+                grp = data['node_id']
+                np.savez('{}.npz'.format(data['node_id']),
+                         descriptors=data.descriptors,
+                         keypoints=data.keypoints,
+                         keypoints_idx=data.keypoints.index,
+                         keypoints_columns=data.keypoints.columns)
+                pzip.write('{}.npz'.format(data['node_id']))
+                os.remove('{}.npz'.format(data['node_id']))
 
         # Write the array edge attributes to hdf
         for s, d, data in network.edges_iter(data=True):
             if s > d:
                 s, d = d, s
-            grp = str((s,d))
-            np.savez('{}_{}.npz'.format(s, d),
-                     matches=data.matches,
-                     matches_idx=data.matches.index,
-                     matches_columns=data.matches.columns,
-                     _masks=data._masks,
-                     _masks_idx=data._masks.index,
-                     _masks_columns=data._masks.columns)
-            pzip.write('{}_{}.npz'.format(s, d))
-            os.remove('{}_{}.npz'.format(s, d))
+            if data.matches is not None:
+                grp = str((s,d))
+                np.savez('{}_{}.npz'.format(s, d),
+                         matches=data.matches,
+                         matches_idx=data.matches.index,
+                         matches_columns=data.matches.columns,
+                         masks=data.masks,
+                         masks_idx=data.masks.index,
+                         masks_columns=data.masks.columns)
+                pzip.write('{}_{}.npz'.format(s, d))
+                os.remove('{}_{}.npz'.format(s, d))
 
 def json_numpy_obj_hook(dct):
     """Decodes a previously encoded numpy ndarray with proper shape and dtype.
@@ -87,7 +89,6 @@ def json_numpy_obj_hook(dct):
     return dct
 
 def load(projectname):
-
     with ZipFile(projectname, 'r') as pzip:
         # Read the graph object
         with pzip.open('graph.json', 'r') as g:
@@ -102,6 +103,7 @@ def load(projectname):
         for d in data['nodes']:
             n = Node(image_name=d['image_name'], image_path=d['image_path'], node_id=d['id'])
             n['hash'] = d['hash']
+            n['downsample_amount'] = d.get('downsample_amount', 1)
             try:
                 # Load the byte stream for the nested npz file into memory and then unpack
                 n.load_features(BytesIO(pzip.read('{}.npz'.format(d['id']))))
@@ -118,11 +120,10 @@ def load(projectname):
             edge['weights'] = e['weights']
             try:
                 nzf = np.load(BytesIO(pzip.read('{}_{}.npz'.format(e['source'], e['target']))))
-                edge._masks = pd.DataFrame(nzf['_masks'], index=nzf['_masks_idx'], columns=nzf['_masks_columns'])
+                edge.masks = pd.DataFrame(nzf['masks'], index=nzf['masks_idx'], columns=nzf['masks_columns'])
                 edge.matches = pd.DataFrame(nzf['matches'], index=nzf['matches_idx'], columns=nzf['matches_columns'])
             except:
                 pass
             # Add a mock edge
             cg.edge[e['source']][e['target']] = edge
-
     return cg
