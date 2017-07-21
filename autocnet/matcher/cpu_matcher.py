@@ -8,7 +8,7 @@ FLANN_INDEX_KDTREE = 1  # Algorithm to set centers,
 DEFAULT_FLANN_PARAMETERS = dict(algorithm=FLANN_INDEX_KDTREE, trees=3)
 
 
-def match(self, k=2, overlap=[], **kwargs):
+def match(self, k=2, **kwargs):
     """
     Given two sets of descriptors, utilize a FLANN (Approximate Nearest
     Neighbor KDTree) matcher to find the k nearest matches.  Nearness is
@@ -83,21 +83,12 @@ def match(self, k=2, overlap=[], **kwargs):
     if 'aidx' in kwargs.keys():
         aidx = kwargs['aidx']
         kwargs.pop('aidx')
-    elif overlap:
-        # Query the source keypoints for those in the MBR
-        source_mbr = overlap[0]
-        query_result = self.source.keypoints.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*source_mbr))
-        aidx = query_result.index
     else:
         aidx = None
     
     if 'bidx' in kwargs.keys():
         bidx = kwargs['bidx']
         kwargs.pop('bidx')
-    elif overlap:
-        destin_mbr = overlap[1]
-        query_result = self.destination.keypoints.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*destin_mbr))
-        bidx = query_result.index
     else:
         bidx = None
 

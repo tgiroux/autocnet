@@ -115,14 +115,6 @@ class Edge(dict, MutableMapping):
         """
         pass
 
-    def match_overlap(self, k=2, **kwargs):
-        """
-        Given two sets of descriptors, apply the matcher with the
-        source and destination overlaps.
-        """
-        overlaps = [self['source_mbr'], self['destin_mbr']]
-        self.match(k=k, overlap=overlaps, **kwargs)
-
     def decompose(self):
         """
         Apply coupled decomposition to the images and
@@ -153,6 +145,26 @@ class Edge(dict, MutableMapping):
         arr = node.geodata.read_array(pixels=pixels)
         node.extract_features(arr, xystart=xystart, *args, **kwargs)
     """
+
+    def overlap_check(self):
+        """Creates a mask for matches on the overlap"""
+        if not (self["source_mbr"] and self["destin_mbr"]):
+            warnings.warn(
+                "Cannot use overlap constraint, minimum bounding rectangles"
+                " have not been computed for one or more Nodes")
+            return
+
+        # Get overlapping keypts
+        s_idx = self.get_keypoints(self.source, overlap=True).index
+        d_idx = self.get_keypoints(self.destination, overlap=True).index
+
+        # Create a mask from matches whose rows have both source idx &
+        # dest idx in the overlapping keypts
+        mask = pd.Series(False, index=self.matches.index)
+        mask.loc[(self.matches["source_idx"].isin(s_idx)) &
+                 (self.matches["destination_idx"].isin(d_idx))] = True
+        self.masks['overlap'] = mask
+
     def symmetry_check(self):
         self.masks['symmetry'] = od.mirroring_test(self.matches)
 
@@ -201,18 +213,33 @@ class Edge(dict, MutableMapping):
             self.masks[maskname] = mask
 
     @utils.methodispatch
-    def get_keypoints(self, node, index=None, homogeneous=False):
+    def get_keypoints(self, node, index=None, homogeneous=False, overlap=False):
         if not hasattr(index, '__iter__') and index is not None:
             raise TypeError
-        return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
+        keypts = node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
+        # If we only want keypoints in the overlap
+        if overlap:
+            # Can't use overlap if we haven't computed MBRs
+            if not (self["source_mbr"] and self["destin_mbr"]):
+                warnings.warn(
+                    "Cannot use overlap constraint, minimum bounding rectangles"
+                    " have not been computed for one or more Nodes")
+                return keypts
+            # Create overlap's bounding polygon in pixel space
+            bounds_poly = node.reproject_geom(self.overlap_latlon_coords)
+            # Mask for node keypts based on bounding poly
+            overlap_mask = cg.geom_mask(node.keypoints, bounds_poly)
+            # Return masked keypts
+            return keypts[overlap_mask]
+        return keypts
 
     @get_keypoints.register(str)
-    def _(self, node, index=None, homogeneous=False):
+    def _(self, node, index=None, homogeneous=False, overlap=False):
         if not hasattr(index, '__iter__') and index is not None:
             raise TypeError
         node = node.lower()
         node = getattr(self, node)
-        return node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
+        return self.get_keypoints(node, index=index, homogeneous=homogeneous, overlap=overlap)
 
     def compute_fundamental_error(self, clean_keys=[]):
         """
