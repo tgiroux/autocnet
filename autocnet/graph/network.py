@@ -220,8 +220,12 @@ class CandidateGraph(nx.Graph):
             match, _ = e.clean(clean_keys=clean_keys)
             match = match[['source_image', 'source_idx',
                            'destination_image', 'destination_idx']]
-
-            print(type(s))
+            skps = e.get_keypoints('source', index=match.source_idx)
+            skps.columns = ['source_x', 'source_y']
+            dkps = e.get_keypoints('destination', index=match.destination_idx)
+            dkps.columns = ['destination_x', 'destination_y']
+            match = match.join(skps, on='source_idx')
+            match = match.join(dkps, on='destination_idx')
             matches.append(match)
         return matches
 
