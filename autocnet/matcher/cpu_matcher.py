@@ -77,25 +77,19 @@ def match(edge, k=2, **kwargs):
         fl.clear()
 
     fl = FlannMatcher()
+
+    # Reset the edge.masks attrib; New matches would mean masks have to be
+    # re-calculated
+    edge.masks = pd.DataFrame()
     
     # Get the correct descriptors
-    # TODO: Extract into a helper function
-    if 'aidx' in kwargs.keys():
-        aidx = kwargs['aidx']
-        kwargs.pop('aidx')
-    else:
-        aidx = None
-    
-    if 'bidx' in kwargs.keys():
-        bidx = kwargs['bidx']
-        kwargs.pop('bidx')
-    else:
-        bidx = None
+    aidx = kwargs.pop('aidx', None)
+    bidx = kwargs.pop('bidx', None)
 
-    mono_matches(edge.source, edge.destination, aidx=aidx, bidx=bidx, **kwargs)
+    mono_matches(edge.source, edge.destination, aidx=aidx, bidx=bidx)
     # Swap the indices since mono_matches is generic and source/destin are
     # swapped
-    mono_matches(edge.destination, edge.source, aidx=bidx, bidx=aidx, **kwargs)
+    mono_matches(edge.destination, edge.source, aidx=bidx, bidx=aidx)
     edge.matches.sort_values(by=['distance'])
 
 

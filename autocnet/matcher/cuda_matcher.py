@@ -38,4 +38,5 @@ def match(edge, ratio=0.8, **kwargs):
 
     # Set the matches and set the 'ratio' (ambiguity) mask
     edge.matches = df
+    edge.masks = pd.DataFrame()
     edge.masks['ratio'] = df['ambiguity'] <= ratio
