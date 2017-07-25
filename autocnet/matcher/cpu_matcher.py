@@ -32,7 +32,7 @@ def match(edge, k=2, **kwargs):
         matches : dataframe
                   A dataframe of matches
         """
-        if edge.matches is None:
+        if edge.matches.empty:
             edge.matches = matches
         else:
             df = edge.matches
