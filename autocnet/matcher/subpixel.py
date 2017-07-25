@@ -20,7 +20,7 @@ def clip_roi(img, center, img_size):
           argument in the form [xstart, ystart, xstop, ystop]
 
     center : tuple
-             (y,x) coordinates to center the roi
+             (x,y) coordinates to center the roi
 
     img_size : int
                Odd, total image size

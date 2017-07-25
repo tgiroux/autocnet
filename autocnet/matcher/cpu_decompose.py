@@ -1,12 +1,12 @@
 import numpy as np
 from scipy.spatial.distance import cdist
 
-from autocnet.matcher.feature import FlannMatcher
-from autocnet.matcher.feature_matcher import match
+from autocnet.matcher.cpu_matcher import FlannMatcher
+from autocnet.matcher.cpu_matcher import match
 from autocnet.transformation.decompose import coupled_decomposition
 
 
-def decompose_and_match(self, k=2, maxiteration=3, size=18, buf_dist=3,**kwargs):
+def decompose_and_match(self, k=2, maxiteration=3, size=18, buf_dist=3, **kwargs):
     """
     Similar to match, this method first decomposed the image into
     $4^{maxiteration}$ subimages and applys matching between each sub-image.
@@ -67,8 +67,9 @@ def decompose_and_match(self, k=2, maxiteration=3, size=18, buf_dist=3,**kwargs)
     dsize = ddata.shape
 
     # Grab all the available candidate keypoints
-    skp = self.source.get_keypoints()
-    dkp = self.destination.get_keypoints()
+    overlap = kwargs.get("overlap", False)
+    skp = self.get_keypoints(self.source, overlap=overlap)
+    dkp = self.get_keypoints(self.destination, overlap=overlap)
 
     # Set up the membership arrays
     self.smembership = np.zeros(sdata.shape, dtype=np.int16)
@@ -203,6 +204,6 @@ def decompose_and_match(self, k=2, maxiteration=3, size=18, buf_dist=3,**kwargs)
         sidx = skp.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(minsx, maxsx, minsy, maxsy)).index
         didx = dkp.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(mindx, maxdx, mindy, maxdy)).index
         # If the candidates < k, OpenCV throws an error
-        if len(sidx) >= k and len(didx) >=k:
+        if len(sidx) > k and len(didx) > k:
             match(self, aidx=sidx, bidx=didx)
             match(self, aidx=didx, bidx=sidx)

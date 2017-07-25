@@ -39,7 +39,7 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(utils.checkmonotonic(range(10)))
         self.assertFalse(utils.checkmonotonic([1,2,4,3]))
         self.assertFalse(utils.checkmonotonic([-2.0, 0.0, -3.0]))
-        
+
         self.assertEqual(utils.checkmonotonic(np.arange(10), piecewise=True),
                 [True] * 10)
         self.assertEqual(utils.checkmonotonic(range(10), piecewise=True),
@@ -140,3 +140,22 @@ class TestUtils(unittest.TestCase):
 
         self.assertIsInstance(geom1, ogr.Geometry)
         self.assertRaises(ValueError, utils.array_to_poly, array2)
+
+    def test_dispatch(self):
+        class Patchwork(object):
+
+            def __init__(self, **kwargs):
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+            @utils.methodispatch
+            def get(self, arg):
+                return getattr(self, arg, None)
+
+            @get.register(list)
+            def _(self, arg):
+                return [self.get(x) for x in arg]
+
+        patchwork = Patchwork(a=1, b=2, c=3)
+        self.assertEqual(patchwork.get(['a', 'b']), [1, 2])
+        self.assertEqual(patchwork.get('c'), 3)

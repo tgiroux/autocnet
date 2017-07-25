@@ -1,37 +1,61 @@
-.. autocnet documentation master file, created by
-   sphinx-quickstart on Tue Jul  9 22:26:36 2013.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-AutoCNet
-========
-
-.. image:: _static/images/matched.png
+.. figure:: _static/images/matched.png
    :alt: Sample Matching
    :align: center
 
+   A sample of the AutoCNet library being used for pseudo-dense matching on straight-forward Apollo 15 metric camera images.  Blue points are identified correspondences and yellow lines indicate that the points are linked (correspond with one another).
 
-AutoCNet is an open source library for the automated generation of sparse n-image
-control networks.  AutoCNet is licensed in `the public domain`.
+AutoCNet
+========
+AutoCNet is an open source library (API) for the pseudo-automated generation of sparse n-image
+control networks.  AutoCNet is licensed in `the public domain`_.
 
-.. image:: _static/images/download2.png
-   :target: users/installation.html
-   :width: 10%
-.. image:: _static/images/tutorial.png
-   :target: users/index.html
-   :width: 10%
-.. image:: _static/images/documentation.png
-   :target: library/index.html
-   :width: 10%
-.. image:: _static/images/bugs.png
-   :target: https://github.com/USGS-Astrogeology/autocnet/issues?state=open
-   :width: 10%
+AutoCNet supports the following:
+
+- 32-bit CUDA based (GPU) keypoint extraction
+- Support for images of arbitrary size using downsampling or tiling for feature extraction
+- A reference implementation (the CandidateGraph) to demonstrate use of the API
+
+Tutorials
+---------
+An example is worth 1000 pages of documentation.  Checkout our tutorials (jupyter notebooks).
 
 .. toctree::
-    :hidden:
+   :maxdepth: 1
 
-    users/index
-    developers/index
-    library/index
+   users/index
 
+Issues and Version Control
+--------------------------
+This project is hosted on `Github`_. If you run into a problem, please open an `issue`_ on our `issue`_ tracker.
+
+Documentation
+-------------
+.. toctree::
+  :maxdepth: 3
+
+  library/index
+
+Developers
+----------
+.. toctree::
+   :maxdepth: 2
+
+   developers/index
+
+References
+----------
+.. toctree::
+   :maxdepth: 1
+
+   references
+
+License
+-------
+.. toctree::
+   :maxdepth: 1
+
+   license
+
+.. _GitHub: http://github.com/USGS-Astrogeology/autocnet
+.. _issue: https://github.com/USGS-Astrogeology/autocnet/issues?state=open
 .. _the public domain: license.html
