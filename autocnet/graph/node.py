@@ -9,6 +9,7 @@ from plio.io.io_gdal import GeoDataset
 from plio.io.isis_serial_number import generate_serial_number
 from scipy.misc import bytescale, imresize
 from shapely.geometry import Polygon
+from shapely import wkt
 
 from autocnet.cg import cg
 from autocnet.control.control import Correspondence, Point
@@ -145,6 +146,16 @@ class Node(dict, MutableMapping):
         boolean_mask = v[1]
         self.masks[column_name] = boolean_mask
     """
+
+    @property
+    def footprint(self):
+        if not getattr(self, '_footprint', None):
+            try:
+                self._footprint = wkt.loads(self.geodata.footprint.GetGeometryRef(0).ExportToWkt())
+            except:
+                return None
+        return self._footprint
+
     @property
     def isis_serial(self):
         """
@@ -161,14 +172,7 @@ class Node(dict, MutableMapping):
 
     @property
     def nkeypoints(self):
-<<<<<<< HEAD
-        if hasattr(self, '_keypoints'):
-            return len(self._keypoints)
-        else:
-            return 0
-=======
         return len(self.keypoints)
->>>>>>> f2242f97db63cfc288581d950d1e506e6d9edc16
 
     def coverage(self):
         """
@@ -236,18 +240,10 @@ class Node(dict, MutableMapping):
          : dataframe
            A pandas dataframe of keypoints
         """
-<<<<<<< HEAD
-        if hasattr(self, '_keypoints'):
-            if index is not None:
-                return self._keypoints.ix[index]
-            else:
-                return self._keypoints
-=======
         if index is not None:
             return self.keypoints.loc[index]
         else:
             return self.keypoints
->>>>>>> f2242f97db63cfc288581d950d1e506e6d9edc16
 
     def get_keypoint_coordinates(self, index=None, homogeneous=False):
         """
