@@ -107,7 +107,7 @@ class Node(dict, MutableMapping):
         return myid <= oid
 
     def __str__(self):
-        return self['node_id']
+        return str(self['node_id'])
 
     def __eq__(self, other):
         eq = True

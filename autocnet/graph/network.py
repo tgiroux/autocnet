@@ -1,3 +1,4 @@
+from collections import defaultdict
 import itertools
 import math
 import os
@@ -825,6 +826,32 @@ class CandidateGraph(nx.Graph):
             voronoi_df = compute_voronoi(kps[initial_mask][kps_mask], reproj_geom, **kwargs)
 
             edge['weights']['voronoi'] = voronoi_df
+            
+    def compute_fully_connected_components(self):
+        """
+        For a given graph, compute all of the fully connected subgraphs with
+        3+ components.
+
+        Returns
+        -------
+        fc : list
+             of lists of node identifiers
+
+        Examples
+        --------
+        >>> G = CandidateGraph()
+        >>> G.add_edges_from([('A', 'B'), ('A', 'C'), ('B', 'C'), ('B', 'D'), ('A', 'E'), ('A', 'F'), ('E', 'F') ])
+        >>> fc = G.fully_connected()
+        >>> fc['A']
+        [['C', 'B', 'A'], ['A', 'F', 'E']]
+        """
+        fully_connected = [i for i in nx.enumerate_all_cliques(self) if len(i) > 2]
+        fc = defaultdict(list)
+        for i in fully_connected:
+            for j in i:
+                fc[j].append(tuple(i))
+        return fc
+
 
     def compute_intersection(self, source, clean_keys=[]):
         """
