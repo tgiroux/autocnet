@@ -280,7 +280,7 @@ class Node(dict, MutableMapping):
         returns coordinates using numpy array accessors.
         """
         index = index.astype(np.int)
-        return self._keypoints.values[index,:2]
+        return self.keypoints.values[index,:2]
 
     @staticmethod
     def _extract_features(array, *args, **kwargs):
@@ -484,7 +484,7 @@ class Node(dict, MutableMapping):
             # Add the point object onto the node
             point = Point(pid)
             #print(g[['source_image', 'destination_image']])
-            #covered_edges = list(map(tuple, g[['source_image', 'destination_image']].values))
+            covered_edges = list(map(tuple, g[['source_image', 'destination_image']].values))
             s = g['source_image'].iat[0]
             d = g['destination_image'].iat[0]
             # The reference edge that we are deepening with
