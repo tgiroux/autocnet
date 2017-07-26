@@ -8,7 +8,7 @@ FLANN_INDEX_KDTREE = 1  # Algorithm to set centers,
 DEFAULT_FLANN_PARAMETERS = dict(algorithm=FLANN_INDEX_KDTREE, trees=3)
 
 
-def match(self, k=2, **kwargs):
+def match(edge, k=2, **kwargs):
     """
     Given two sets of descriptors, utilize a FLANN (Approximate Nearest
     Neighbor KDTree) matcher to find the k nearest matches.  Nearness is
@@ -32,11 +32,11 @@ def match(self, k=2, **kwargs):
         matches : dataframe
                   A dataframe of matches
         """
-        if self.matches is None:
-            self.matches = matches
+        if edge.matches.empty:
+            edge.matches = matches
         else:
-            df = self.matches
-            self.matches = df.append(matches,
+            df = edge.matches
+            edge.matches = df.append(matches,
                                      ignore_index=True,
                                      verify_integrity=True)
 
@@ -77,26 +77,20 @@ def match(self, k=2, **kwargs):
         fl.clear()
 
     fl = FlannMatcher()
+
+    # Reset the edge.masks attrib; New matches would mean masks have to be
+    # re-calculated
+    edge.masks = pd.DataFrame()
     
     # Get the correct descriptors
-    # TODO: Extract into a helper function
-    if 'aidx' in kwargs.keys():
-        aidx = kwargs['aidx']
-        kwargs.pop('aidx')
-    else:
-        aidx = None
-    
-    if 'bidx' in kwargs.keys():
-        bidx = kwargs['bidx']
-        kwargs.pop('bidx')
-    else:
-        bidx = None
+    aidx = kwargs.pop('aidx', None)
+    bidx = kwargs.pop('bidx', None)
 
-    mono_matches(self.source, self.destination, aidx=aidx, bidx=bidx, **kwargs)
+    mono_matches(edge.source, edge.destination, aidx=aidx, bidx=bidx)
     # Swap the indices since mono_matches is generic and source/destin are
     # swapped
-    mono_matches(self.destination, self.source, aidx=bidx, bidx=aidx, **kwargs)
-    self.matches.sort_values(by=['distance'])
+    mono_matches(edge.destination, edge.source, aidx=bidx, bidx=aidx)
+    edge.matches.sort_values(by=['distance'])
 
 
 class FlannMatcher(object):

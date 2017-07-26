@@ -107,11 +107,22 @@ class Edge(dict, MutableMapping):
         ----------
         k : int
             The number of neighbors to find
+        """
+        Edge._match(self, k, **kwargs)
 
-        overlap : boolean
-                  Apply the matcher only to the overlapping area defined by
-                  the source_mbr and destin_mbr attributes (stored in the
-                  edge dict).
+    @staticmethod
+    def _match(edge, k=2, **kwargs):
+        """
+        Patches the static cpu_matcher.match(edge) or cuda_match.match(edge)
+        into the member method Edge.match()
+
+        Parameters
+        ----------
+        edge : Edge
+               The edge object to compute matches for; Edge.match() calls this
+               with self
+        k : int
+            The number of neighbors to find
         """
         pass
 

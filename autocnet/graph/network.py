@@ -799,11 +799,11 @@ class CandidateGraph(nx.Graph):
 
         for s, d, edge in self.edges_iter(data=True):
             source_node = edge.source
-            intersect_gdf = self.compute_intersection(source_node, clean_keys = clean_keys)
+            overlap, _ = self.compute_intersection(source_node, clean_keys = clean_keys)
 
             matches, _ = edge.clean(clean_keys)
             kps = edge.get_keypoints(edge.source, index=matches['source_idx'])[['x', 'y']]
-            reproj_geom = source_node.reproject_geom(intersect_gdf.query("overlaps_all == True").geometry.values[0].__geo_interface__['coordinates'][0])
+            reproj_geom = source_node.reproject_geom(overlap.geometry.values[0].__geo_interface__['coordinates'][0])
             initial_mask = geom_mask(kps, reproj_geom)
 
             if (len(kps[initial_mask]) <= 0):
@@ -858,17 +858,21 @@ class CandidateGraph(nx.Graph):
                 proj_node_list.append(s)
 
         proj_gdf = gpd.GeoDataFrame({"geometry": proj_poly_list, "proj_node": proj_node_list})
-        # Overlay the all geometry and find the one geometry element that overlaps all of the images
+        # Overlay all geometry and find the one geometry element that overlaps all of the images
         intersect_gdf = gpd.overlay(source_gdf, proj_gdf, how='intersection')
-        intersect_gdf['overlaps_all'] = intersect_gdf.geometry.apply(lambda x:proj_gdf.geometry.contains(shapely.affinity.scale(x, .9, .9)).all())
+        if len(intersect_gdf) == 0:
+            raise ValueError('Node ' + str(source['node_id']) +  ' does not overlap with any other images in the candidate graph.')
+        overlaps_mask = intersect_gdf.geometry.apply(lambda x:proj_gdf.geometry.contains(shapely.affinity.scale(x, .9, .9)).all())
+        overlaps_all = intersect_gdf[overlaps_mask]
 
         # If there is no intersection polygon that overlaps all of the images, union all of the intersection
         # polygons into one large polygon that does overlap all of the images
-        if len(intersect_gdf.query("overlaps_all == True")) <= 0:
+        if len(overlaps_all) <= 0:
             new_poly = shapely.ops.unary_union(intersect_gdf.geometry)
-            intersect_gdf.loc[len(intersect_gdf)] = [source['node_id'], source['node_id'], new_poly, True]
+            overlaps_all = gpd.GeoDataFrame({'source_node': source['node_id'], 'proj_node': source['node_id'],
+                                             'geometry': [new_poly]})
 
-        return intersect_gdf
+        return overlaps_all, intersect_gdf
 
     def is_complete(self):
         """
