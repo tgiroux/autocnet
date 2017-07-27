@@ -83,6 +83,8 @@ class CandidateGraph(nx.Graph):
         self.graph['creationdate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
         self.graph['modifieddate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
 
+        self._order_adjacency()
+
     def __eq__(self, other):
         eq = True
         # Check the nodes
@@ -93,6 +95,9 @@ class CandidateGraph(nx.Graph):
             if not self.edge[s][d] == other.edge[s][d]:
                 eq = False
         return eq
+
+    def _order_adjacency(self):  # pragma: no cover
+        self.adj = sorted(self.adj.items())
 
     @property
     def maxsize(self):
@@ -222,8 +227,8 @@ class CandidateGraph(nx.Graph):
         ----------
 
         """
-
         raise NotImplementedError
+        self._order_adjacency()
 
     def extract_features(self, band=1, *args, **kwargs):  # pragma: no cover
         """
