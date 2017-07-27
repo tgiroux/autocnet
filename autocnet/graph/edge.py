@@ -20,7 +20,6 @@ from autocnet.vis.graph_view import plot_edge, plot_node, plot_edge_decompositio
 from autocnet.cg import cg
 
 
-
 class Edge(dict, MutableMapping):
     """
     Attributes
@@ -114,6 +113,23 @@ class Edge(dict, MutableMapping):
                   edge dict).
         """
         pass
+
+    def get_matches(self):
+        if self.matches.empty:
+            return pd.DataFrame()
+
+        match, _ = self.clean(clean_keys=list(self.masks.columns))
+        match = match[['source_image', 'source_idx',
+                       'destination_image', 'destination_idx']]
+        skps = self.get_keypoints('source', index=match.source_idx)
+        skps.columns = ['source_x', 'source_y']
+        dkps = self.get_keypoints('destination', index=match.destination_idx)
+        dkps.columns = ['destination_x', 'destination_y']
+        match = match.join(skps, on='source_idx')
+        match = match.join(dkps, on='destination_idx')
+        matches.append(match)
+        return matches
+
 
     def match_overlap(self, k=2, **kwargs):
         """
