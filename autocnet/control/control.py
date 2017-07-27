@@ -51,7 +51,7 @@ class ControlMediator(object):
         Parameters
         ----------
         overlap : boolean
-                  If True, apply an additional point in polygon check, where
+                  If True, apply aprint(g)n additional point in polygon check, where
                   the polygon is the footprint intersection between images and
                   the point is a keypoint projected into lat/lon space.  Note
                   that the projection can be inaccurate if the method used
@@ -139,6 +139,10 @@ class ControlMediator(object):
         if not 'serial_number' in self._cn.data.columns:
             unique_ids = self._cn.data.image_index.unique()
 
+        if self._cn.validate_points().any() == True:
+            warnings.warn('Control Network is not ISIS3 compliant.  Please run the validate_points method on the control network.')
+            return
+
         serials = {}
         olist = []
         for u in unique_ids:
@@ -146,7 +150,6 @@ class ControlMediator(object):
             path = node['image_path']
             serials[u] = generate_serial_number(path)
             olist.append(path)
-        print(olist)
         to_isis(outname + '.net', self._cn.data, serials)
         write_filelist(olist, outname + '.lis')
 
@@ -157,6 +160,20 @@ class ControlMediator(object):
         http://grail.cs.washington.edu/projects/bal/
         """
         pass
+
+    def plot_point(self, pid):
+        pass
+        """
+        #TODO: This code demonstrates how to interface the candidate graph and
+        # control network object in a jupyter notebook.  This should also
+        # probably dispatch to something in the vis module.
+        g = self._cn.query('point_id == pid')
+        l = len(g)
+        fig, axes = plt.subplots(1, l)
+        for i, (r, row) in enumerate(g.iterrows()):
+            axes[i].imshow(cm._cg.node[row.image_index].geodata.read_array(), cmap='Greys')
+            axes[i].plot(row.x, row.y, 'ro')
+        show()"""
 
 class ControlNetwork(object):
     measures_keys = ['point_id', 'image_index', 'keypoint_index', 'edge', 'match_idx', 'x', 'y']
@@ -193,6 +210,27 @@ class ControlNetwork(object):
         match_id = key[1]
         self.data.loc[self._measure_id] = [point_id, image_id, match_id, edge, match_idx, *fields]
         self._measure_id += 1
+
+    def validate_points(self):
+        """
+        Ensure that all control points currently in the nework are valid.
+
+        Criteria for validity:
+
+          * Singularity: A control point can have one and only one measure from any image
+
+        Returns
+        -------
+         : pd.Series
+
+        """
+
+        def func(g):
+            # One and only one measure constraint
+            singularity = len(g.image_index) < len(g.image_index.unique())
+            return singularity
+
+        return self.data.groupby('point_id').apply(func)
 
     def coverage_per_node(self):
         """
