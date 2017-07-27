@@ -1,6 +1,15 @@
 :mod:`transformation` --- Transformation Objects
 ================================================
 
+Reprojection Transformations
+----------------------------
 .. toctree::
 
-   transformations
+   homography
+   fundamental
+
+Image Decomposition
+-------------------
+ .. toctree::
+
+    decompose

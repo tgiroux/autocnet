@@ -38,7 +38,7 @@ def cuda(enable=False, gpu=0):
             Node._extract_features = staticmethod(extract_features)
 
             from autocnet.matcher.cuda_matcher import match
-            Edge.match = match
+            Edge._match = staticmethod(match)
 
             from autocnet.matcher.cuda_decompose import decompose_and_match
             Edge.decompose_and_match = decompose_and_match
@@ -52,7 +52,7 @@ def cuda(enable=False, gpu=0):
     Node._extract_features = staticmethod(extract_features)
 
     from autocnet.matcher.cpu_matcher import match
-    Edge.match = match
+    Edge._match = staticmethod(match)
 
     from autocnet.matcher.cpu_decompose import decompose_and_match
     Edge.decompose_and_match = decompose_and_match

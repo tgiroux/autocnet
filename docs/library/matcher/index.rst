@@ -1,12 +1,34 @@
 :mod:`matcher` --- Graph Based Data Representaton
 =================================================
 
+CPU Based Feature Extraction and Matching
+-----------------------------------------
+
 .. toctree::
 
-   feature_extractor
-   matcher
-   outlier_detector
+   cpu_extractor
+   cpu_matcher
+   cpu_outlier_detector
+
+
+CUDA Based Feature Extraction and Matching
+------------------------------------------
+.. toctree::
+
+   cuda_extractor
+   cuda_matcher
+   cuda_outlier_detector
+
+Subpixel Refinement
+-------------------
+.. toctree::
+
    subpixel
    ciratefi
-   feature
    naive_template
+
+Spatial Suppression Function Examples
+-------------------------------------
+  .. toctree::
+
+   suppression_funcs

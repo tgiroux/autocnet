@@ -6,7 +6,7 @@ from autocnet.matcher.cpu_matcher import match
 from autocnet.transformation.decompose import coupled_decomposition
 
 
-def decompose_and_match(self, k=2, maxiteration=3, size=18, buf_dist=3,**kwargs):
+def decompose_and_match(self, k=2, maxiteration=3, size=18, buf_dist=3, **kwargs):
     """
     Similar to match, this method first decomposed the image into
     $4^{maxiteration}$ subimages and applys matching between each sub-image.
@@ -67,8 +67,9 @@ def decompose_and_match(self, k=2, maxiteration=3, size=18, buf_dist=3,**kwargs)
     dsize = ddata.shape
 
     # Grab all the available candidate keypoints
-    skp = self.source.get_keypoints()
-    dkp = self.destination.get_keypoints()
+    overlap = kwargs.get("overlap", False)
+    skp = self.get_keypoints(self.source, overlap=overlap)
+    dkp = self.get_keypoints(self.destination, overlap=overlap)
 
     # Set up the membership arrays
     self.smembership = np.zeros(sdata.shape, dtype=np.int16)
