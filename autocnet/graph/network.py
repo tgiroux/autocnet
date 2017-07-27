@@ -60,7 +60,7 @@ class CandidateGraph(nx.Graph):
         self.graph['node_counter'] = 0
         node_labels = {}
         self.graph['node_name_map'] = {}
-        
+
         for node_name in self.nodes():
             image_name = os.path.basename(node_name)
             image_path = node_name
@@ -769,18 +769,18 @@ class CandidateGraph(nx.Graph):
         sg = s.subgraph(nbunch)
         self.nodemask = sg.nodes()
 
-    def nodes_iter(self, data=False):
-        s = super(CandidateGraph, self)
-        nodes = s.nodes_iter(data)
-        ret = []
-        for n in nodes:
-            if data:
-                if n[0] in self.nodemask:
-                    ret.append(n)
-            else:
-                if n in self.nodemask:
-                    ret.append(n)
-        return iter(ret)
+    # def nodes_iter(self, data=False):
+    #     s = super(CandidateGraph, self)
+    #     nodes = s.nodes_iter(data)
+    #     ret = []
+    #     for n in nodes:
+    #         if data:
+    #             if n[0] in self.nodemask:
+    #                 ret.append(n)
+    #         else:
+    #             if n in self.nodemask:
+    #                 ret.append(n)
+    #     return iter(ret)
 
     # def edges_iter(self, nbunch=[], data=False, key=False):
     #     s = super(CandidateGraph, self)
