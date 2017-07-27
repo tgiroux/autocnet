@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import itertools
 import math
 import os
@@ -95,6 +95,10 @@ class CandidateGraph(nx.Graph):
                 eq = False
         return eq
 
+    def _order_adjacency(self):
+        self.adj = sorted(self.adj.items())
+
+
     @property
     def maxsize(self):
         if not hasattr(self, '_maxsize'):
@@ -190,6 +194,10 @@ class CandidateGraph(nx.Graph):
                 input_adjacency[k] = [os.path.join(basepath, i) for i in v]
                 input_adjacency[os.path.join(basepath, k)] = input_adjacency.pop(k)
         return cls(input_adjacency)
+
+    @classmethod
+    def from_save(cls, input_file):
+        return io_network.load(input_file)
 
     def _update_date(self):
         """
