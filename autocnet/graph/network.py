@@ -60,9 +60,7 @@ class CandidateGraph(nx.Graph):
         self.graph['node_counter'] = 0
         node_labels = {}
         self.graph['node_name_map'] = {}
-        self.points = pd.DataFrame()
-        self.nodemask = self.node.keys()
-
+        
         for node_name in self.nodes():
             image_name = os.path.basename(node_name)
             image_path = node_name
