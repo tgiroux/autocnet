@@ -55,8 +55,7 @@ class CandidateGraph(nx.Graph):
     edge_attr_dict_factory = Edge
 
     def __init__(self, *args, basepath=None, **kwargs):
-        self.edge_attr_dict_factory = decorate_class(Edge, create_cg_updater(self), exclude=['clean', 'get_keypoints'])
-
+        # self.edge_attr_dict_factory = decorate_class(Edge, create_cg_updater(self), exclude=['clean', 'get_keypoints'])
         super(CandidateGraph, self).__init__(*args, **kwargs)
         self.graph['node_counter'] = 0
         node_labels = {}
