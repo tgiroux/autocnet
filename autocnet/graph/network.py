@@ -88,9 +88,6 @@ class CandidateGraph(nx.Graph):
         self.graph['creationdate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
         self.graph['modifieddate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
 
-        self.points = pd.DataFrame()
-        self.pointsmask = pd.DataFrame()
-
     def get_matches(self, clean_keys=[], edges=[]):
         return self.apply_func_to_edges('get_matches')
 
