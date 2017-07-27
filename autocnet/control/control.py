@@ -4,6 +4,10 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point
 
+from plio.io.io_controlnetwork import to_isis, write_filelist
+from plio.io.isis_serial_number import generate_serial_number
+
+
 """
 Which mthods must some object that handles matching expose?
 
@@ -124,10 +128,35 @@ class ControlMediator(object):
              return candidate_cliques.candidates
 
 
-    def deepen_correspondences():
+    def deepen_correspondences(self, overlap=False):
+        candidates = self.identify_potential_overlaps(overlap=overlap)
+        # Add in @acpaquettes' deepen logic.
+
+    def to_isis(self, outname, *args, **kwargs):
+        """
+        Write the control network out to the ISIS3 control network format.
+        """
+        if not 'serial_number' in self._cn.data.columns:
+            unique_ids = self._cn.data.image_index.unique()
+
+        serials = {}
+        olist = []
+        for u in unique_ids:
+            node = self._cg.node[0]
+            path = node['image_path']
+            serials[u] = generate_serial_number(path)
+            olist.append(path)
+
+        to_isis(outname + '.net', self._cn.data, serials)
+        write_filelist(olist, outname + '.lis')
+
+    def to_bal(self):
+        """
+        Write the control network out to the Bundle Adjustment in the Large
+        (BAL) file format.  For more information see:
+        http://grail.cs.washington.edu/projects/bal/
+        """
         pass
-
-
 
 class ControlNetwork(object):
     measures_keys = ['point_id', 'image_index', 'keypoint_index', 'edge', 'match_idx', 'x', 'y']
