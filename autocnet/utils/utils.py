@@ -399,16 +399,16 @@ def decorate_class(cls, decorator, exclude=[], *args, **kwargs):
     # return decorated copy (i.e. a subclass with decorations)
     return decorate(type('cls_copy', cls.__bases__, dict(cls.__dict__)))
 
-def create_decorator(*args, **kwargs):
+def create_decorator(dec, **namespace):
     """
     Create a decorator function using arbirary params. The objects passed in
     can be used in the body. Originally designed with the idea of automatically
-    updating one object after the decorated object was modified. 
+    updating one object after the decorated object was modified.
     """
     def decorator(func):
         def wrapper(self, *args, **kwargs):
             ret = func(self, *args, **kwargs)
-            # do something with obj
+            exec(dec, *args, **kwargs)
             if ret:
                 return ret
         return wrapper
