@@ -23,6 +23,7 @@ from autocnet.graph.node import Node
 from autocnet.io import network as io_network
 from autocnet.vis.graph_view import plot_graph, cluster_plot
 
+
 # The total number of pixels squared that can fit into the keys number of GB of RAM for SIFT.
 MAXSIZE = {0:None,
            2:6250,
@@ -54,10 +55,14 @@ class CandidateGraph(nx.Graph):
     edge_attr_dict_factory = Edge
 
     def __init__(self, *args, basepath=None, **kwargs):
+        self.edge_attr_dict_factory = decorate_class(Edge, create_cg_updater(self), exclude=['clean', 'get_keypoints'])
+
         super(CandidateGraph, self).__init__(*args, **kwargs)
         self.graph['node_counter'] = 0
         node_labels = {}
         self.graph['node_name_map'] = {}
+        self.points = pd.DataFrame()
+        self.nodemask = self.node.keys()
 
         for node_name in self.nodes():
             image_name = os.path.basename(node_name)
@@ -82,6 +87,12 @@ class CandidateGraph(nx.Graph):
 
         self.graph['creationdate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
         self.graph['modifieddate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
+
+        self.points = pd.DataFrame()
+        self.pointsmask = pd.DataFrame()
+
+    def get_matches(self, clean_keys=[], edges=[]):
+        return self.apply_func_to_edges('get_matches')
 
     def __eq__(self, other):
         eq = True
@@ -415,7 +426,8 @@ class CandidateGraph(nx.Graph):
         graph_mask_keys : list
                           of keys in graph_masks
         """
-        if not isinstance(function, str):
+        return_lis = []
+        if callable(function):
             function = function.__name__
 
         for s, d, edge in self.edges_iter(data=True):
@@ -424,7 +436,58 @@ class CandidateGraph(nx.Graph):
             except:
                 raise AttributeError(function, ' is not an attribute of Edge')
             else:
-                func(*args, **kwargs)
+                ret = func(*args, **kwargs)
+                return_lis.append(ret)
+
+        if any(return_lis):
+            return return_lis
+
+
+    def apply(self, function, on='edge',out=None, args=(), **kwargs):
+        """
+        Applys a function to every node or edge, returns collected return
+        values.
+
+        TODO: Merge with apply_func_to_edges?
+
+        Parameters
+        ----------
+        function : callable
+                   Function to apply to graph. Should accept (id, data).
+
+        on : string
+             Whether to use nodes or edges. default is 'edge'.
+
+        out : var
+              Optionally put the output in a variable rather than returning it
+
+        args : iterable
+               Some iterable of positional arguments for function.
+
+        kwargs : dict
+                 keyword args to pass into function.
+        """
+        options = {
+            'edge' : self.edges_iter,
+            'edges' : self.edges_iter,
+            'e' : self.edges_iter,
+            0 : self.edges_iter,
+            'node' : self.nodes_iter,
+            'nodes' : self.nodes_iter,
+            'n' : self.nodes_iter,
+            1 : self.nodes_iter
+        }
+
+        if not callable(function):
+            raise TypeError('{} is not callable.'.format(function))
+
+        res = []
+        for elem in options[on](data=True):
+            res.append(function(elem, *args, **kwargs))
+
+        if out: out=res
+        else: return res
+
 
     def symmetry_checks(self):
         '''
@@ -694,6 +757,41 @@ class CandidateGraph(nx.Graph):
 
         H.graph = self.graph
         return H
+
+    def subgraph(self, nbunch):
+        s = super(CandidateGraph, self)
+        sg = s.subgraph(nbunch)
+        self.nodemask = sg.nodes()
+
+    def nodes_iter(self, data=False):
+        s = super(CandidateGraph, self)
+        nodes = s.nodes_iter(data)
+        ret = []
+        for n in nodes:
+            if data:
+                if n[0] in self.nodemask:
+                    ret.append(n)
+            else:
+                if n in self.nodemask:
+                    ret.append(n)
+        return iter(ret)
+
+    # def edges_iter(self, nbunch=[], data=False, key=False):
+    #     s = super(CandidateGraph, self)
+    #     if not isinstance(nbunch, list):
+    #         nbunch = [nbunch]
+    #
+    #     if nbunch:
+    #         nbunch = [node for node in nbunch if nbunch not in list(self.nodemask)]
+    #     else:
+    #         nbunch = list(self.nodemask)
+    #
+    #     try:
+    #         return s.edges_iter(nbunch=nbunch, data=data)
+    #     except:
+    #         return s.edges_iter([self.node[node]['image_path'] for node in nbunch], data=data)
+
+
 
     def subgraph_from_matches(self):
         """

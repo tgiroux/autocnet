@@ -366,3 +366,48 @@ def methodispatch(func):
     wrapper.register = dispatcher.register
     update_wrapper(wrapper, dispatcher)
     return wrapper
+
+
+def decorate_class(cls, decorator, exclude=[], *args, **kwargs):
+    """
+    Decorates a class with a give docorator. Returns a subclass with
+    dectorations applied
+
+    Parameters
+    ----------
+    cls : Class
+          A class to be decorated
+
+    decorator : callable
+                callable to wrap cls's methods with
+
+    exclude : list
+              list of method names to exclude from being decorated
+
+    args, kwargs : list, dict
+                   Parameters to pass into decorator
+    """
+    def decorate(cls):
+        attributes = cls.__dict__.keys()
+        for attr in attributes: # there's propably a better way to do this
+            if callable(getattr(cls, attr)):
+                name = getattr(cls, attr).__name__
+                if name[0] == '_' or name in exclude:
+                    continue
+                setattr(cls, attr, decorator(getattr(cls, attr)))
+        return cls
+    # return decorated copy (i.e. a subclass with decorations)
+    return decorate(type('cls_copy', cls.__bases__, dict(cls.__dict__)))
+
+def create_cg_updater(cg):
+    """
+    Create a decorator function using object
+    """
+    def decorator(func):
+        def wrapper(self, *args, **kwargs):
+            ret = func(self, *args, **kwargs)
+            # do something with cg
+            if ret:
+                return ret
+        return wrapper
+    return decorator
