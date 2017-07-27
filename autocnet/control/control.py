@@ -23,6 +23,7 @@ class ControlMediator(object):
     def from_candidategraph(cls, candidategraph, clean_keys=[]):
         mediator = cls(candidategraph, ControlNetwork())
         matches = candidategraph.get_matches(clean_keys=clean_keys)
+        print(matches)
         for match in matches:
             for idx, row in match.iterrows():
                 edge = (row.source_image, row.destination_image)
@@ -142,11 +143,11 @@ class ControlMediator(object):
         serials = {}
         olist = []
         for u in unique_ids:
-            node = self._cg.node[0]
+            node = self._cg.node[u]
             path = node['image_path']
             serials[u] = generate_serial_number(path)
             olist.append(path)
-
+        print(olist)
         to_isis(outname + '.net', self._cn.data, serials)
         write_filelist(olist, outname + '.lis')
 

@@ -216,6 +216,34 @@ class CandidateGraph(nx.Graph):
         return self.node[node_index]['image_name']
 
     def get_matches(self, clean_keys=[]):
+        """
+        For each edge get all valid matches, masked by the clean_keys.
+
+        Parameters
+        ----------
+        clean_keys: list
+                    of masks to use
+
+        Returns
+        -------
+        matches : list
+                  of matches dataframes
+        """
+        matches = []
+        for s, d, e in self.edges_iter(data=True):
+            match, _ = e.clean(clean_keys=clean_keys)
+            match = match[['source_image', 'source_idx',
+                           'destination_image', 'destination_idx']]
+            skps = e.get_keypoints('source', index=match.source_idx)
+            skps.columns = ['source_x', 'source_y']
+            dkps = e.get_keypoints('destination', index=match.destination_idx)
+            dkps.columns = ['destination_x', 'destination_y']
+            match = match.join(skps, on='source_idx')
+            match = match.join(dkps, on='destination_idx')
+            matches.append(match)
+        return matches
+
+    def get_matches(self, clean_keys=[]):
         matches = []
         for s, d, e in self.edges_iter(data=True):
             match, _ = e.clean(clean_keys=clean_keys)
@@ -826,7 +854,7 @@ class CandidateGraph(nx.Graph):
             voronoi_df = compute_voronoi(kps[initial_mask][kps_mask], reproj_geom, **kwargs)
 
             edge['weights']['voronoi'] = voronoi_df
-            
+
     def compute_fully_connected_components(self):
         """
         For a given graph, compute all of the fully connected subgraphs with
