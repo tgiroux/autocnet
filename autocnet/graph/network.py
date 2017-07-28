@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import itertools
 import math
 import os
@@ -83,7 +84,6 @@ class CandidateGraph(nx.Graph):
         self.graph['creationdate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
         self.graph['modifieddate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
 
-        self._order_adjacency()
 
     def __eq__(self, other):
         eq = True
@@ -97,7 +97,7 @@ class CandidateGraph(nx.Graph):
         return eq
 
     def _order_adjacency(self):  # pragma: no cover
-        self.adj = sorted(self.adj.items())
+        self.adj = OrderedDict(sorted(self.adj.items()))
 
     @property
     def maxsize(self):
