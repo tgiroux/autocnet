@@ -9,6 +9,7 @@ from plio.io.io_gdal import GeoDataset
 from plio.io.isis_serial_number import generate_serial_number
 from scipy.misc import bytescale, imresize
 from shapely.geometry import Polygon
+from shapely import wkt
 
 from autocnet.cg import cg
 from autocnet.control.control import Correspondence, Point
@@ -145,6 +146,16 @@ class Node(dict, MutableMapping):
         boolean_mask = v[1]
         self.masks[column_name] = boolean_mask
     """
+
+    @property
+    def footprint(self):
+        if not getattr(self, '_footprint', None):
+            try:
+                self._footprint = wkt.loads(self.geodata.footprint.GetGeometryRef(0).ExportToWkt())
+            except:
+                return None
+        return self._footprint
+
     @property
     def isis_serial(self):
         """
@@ -261,6 +272,15 @@ class Node(dict, MutableMapping):
             keypoints['homogeneous'] = 1
 
         return keypoints
+
+    def get_raw_keypoint_coordinates(self, index):
+        """
+        The performance of get_keypoint_coordinates can be slow
+        due to the ability for fancier indexing.  This method
+        returns coordinates using numpy array accessors.
+        """
+        index = index.astype(np.int)
+        return self.keypoints.values[index,:2]
 
     @staticmethod
     def _extract_features(array, *args, **kwargs):
@@ -463,23 +483,28 @@ class Node(dict, MutableMapping):
 
             # Add the point object onto the node
             point = Point(pid)
-
+            #print(g[['source_image', 'destination_image']])
             covered_edges = list(map(tuple, g[['source_image', 'destination_image']].values))
+            s = g['source_image'].iat[0]
+            d = g['destination_image'].iat[0]
             # The reference edge that we are deepening with
-            ab = cg.edge[covered_edges[0][0]][covered_edges[0][1]]
+            ab = cg.edge[s][d]
 
             # Get the coordinates of the search correspondence
-            ab_keypoints = ab.source.get_keypoint_coordinates(index=g['source_idx'])
+            ab_keypoints = ab.source.get_raw_keypoint_coordinates(index=g['source_idx'])
             ab_x = None
-
             for j, (r_idx, r) in enumerate(g.iterrows()):
-                kp = ab_keypoints.iloc[j].values
-
+                if len(g) == 1:
+                    kp = ab_keypoints
+                else:
+                    kp = ab_keypoints[j]
                 # Homogenize the coord used for epipolar projection
                 if ab_x is None:
                     ab_x = np.array([kp[0], kp[1], 1.])
 
-                kpd = ab.destination.get_keypoint_coordinates(index=g['destination_idx']).values[0]
+                kpd = ab.destination.get_raw_keypoint_coordinates(index=g['destination_idx'])
+                if len(kpd.shape) > 1:
+                    kpd = kpd[0]
                 # Add the existing source and destination correspondences
                 self.point_to_correspondence[point].add((r['source_image'],
                                                                   Correspondence(r['source_idx'],

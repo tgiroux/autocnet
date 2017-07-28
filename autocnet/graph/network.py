@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import itertools
 import math
 import os
@@ -98,6 +99,9 @@ class CandidateGraph(nx.Graph):
             if not self.edge[s][d] == other.edge[s][d]:
                 eq = False
         return eq
+
+    def _order_adjacency(self):  # pragma: no cover
+        self.adj = OrderedDict(sorted(self.adj.items()))
 
     @property
     def maxsize(self):
@@ -227,8 +231,8 @@ class CandidateGraph(nx.Graph):
         ----------
 
         """
-
         raise NotImplementedError
+        self._order_adjacency()
 
     def extract_features(self, band=1, *args, **kwargs):  # pragma: no cover
         """
@@ -973,3 +977,7 @@ class CandidateGraph(nx.Graph):
                 return False
 
         return True
+
+    def footprints(self):
+        geoms = [n.footprint for i, n in self.nodes_iter(data=True)]
+        return gpd.GeoDataFrame(geometry=geoms)
