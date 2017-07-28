@@ -891,3 +891,7 @@ class CandidateGraph(nx.Graph):
                 return False
 
         return True
+
+    def footprints(self):
+        geoms = [n.footprint for i, n in self.nodes_iter(data=True)]
+        return gpd.GeoDataFrame(geometry=geoms)
