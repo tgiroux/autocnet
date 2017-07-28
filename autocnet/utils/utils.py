@@ -368,7 +368,7 @@ def methodispatch(func):
     return wrapper
 
 
-def decorate_class(cls, decorator, exclude=[], *args, **kwargs):
+def decorate_class(cls, decorator, exclude=[], *args, **kwargs): # pragma: no cover
     """
     Decorates a class with a give docorator. Returns a subclass with
     dectorations applied

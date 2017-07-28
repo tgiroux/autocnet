@@ -764,11 +764,6 @@ class CandidateGraph(nx.Graph):
         H.graph = self.graph
         return H
 
-    def subgraph(self, nbunch):
-        s = super(CandidateGraph, self)
-        sg = s.subgraph(nbunch)
-        self.nodemask = sg.nodes()
-
     # def nodes_iter(self, data=False):
     #     s = super(CandidateGraph, self)
     #     nodes = s.nodes_iter(data)

@@ -179,7 +179,10 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(undecorated.get_test(), 'original')
         self.assertEqual(decorated.get_test(), 'decorated')
 
-    def test_decorate_class(self):
+        with self.assertRaises(Exception):
+            utils.decorate_class(Test, 'Totally not a callable')
+
+    def test_generate_decorator(self):
         def func_to_wrap(x):
             return x+1
 
