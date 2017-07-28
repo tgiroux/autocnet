@@ -220,16 +220,16 @@ def test_intersection():
         e.source = cang.node[s]
         e.destination = cang.node[d]
 
-    intersect_gdf = cang.compute_intersection(3)
+    overlap, intersect_gdf = cang.compute_intersection(3)
 
-    # Test the correct areas were found
+    # Test the correct areas were found for the overlap and
+    # the intersect_gdf
+    print(overlap.geometry.area)
     assert intersect_gdf.geometry[0].area == 7.5
     assert intersect_gdf.geometry[1].area == 5
     assert intersect_gdf.geometry[2].area == 5
     assert intersect_gdf.geometry[3].area == 3.75
-    assert intersect_gdf.geometry[4].area == 21.25
-    # Check if the correct poly was determined to overlap all other images
-    assert intersect_gdf.overlaps_all[4] == True
+    assert overlap.geometry.area.values == 21.25
 
 
 def test_set_maxsize(graph):
