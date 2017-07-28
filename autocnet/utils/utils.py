@@ -387,6 +387,9 @@ def decorate_class(cls, decorator, exclude=[], *args, **kwargs):
     args, kwargs : list, dict
                    Parameters to pass into decorator
     """
+    if not callable(decorator):
+        raise Exception('Decorator must be callable.')
+
     def decorate(cls):
         attributes = cls.__dict__.keys()
         for attr in attributes: # there's propably a better way to do this
@@ -405,10 +408,13 @@ def create_decorator(dec, **namespace):
     can be used in the body. Originally designed with the idea of automatically
     updating one object after the decorated object was modified.
     """
-    def decorator(func):
-        def wrapper(self, *args, **kwargs):
-            ret = func(self, *args, **kwargs)
-            exec(dec, *args, **kwargs)
+
+    def decorator(func, *args, **kwargs):
+        def wrapper(*args, **kwarg):
+            for key in namespace.keys():
+                locals()[key] = namespace[key]
+            ret = func(*args, **kwargs)
+            exec(dec.__code__, locals(), globals())
             if ret:
                 return ret
         return wrapper

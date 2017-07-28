@@ -557,7 +557,7 @@ class Edge(dict, MutableMapping):
         """
         self.overlap_latlon_coords, self["source_mbr"], self["destin_mbr"] = self.source.geodata.compute_overlap(self.destination.geodata, **kwargs)
 
-    def get_matches(self):
+    def get_matches(self): # pragma: no cover
         if self.matches.empty:
             return pd.DataFrame()
 
