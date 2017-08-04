@@ -147,10 +147,11 @@ class ControlMediator(object):
         olist = []
         for u in unique_ids:
             node = self._cg.node[u]
+            serials[u] = node.isis_serial
             path = node['image_path']
             serials[u] = generate_serial_number(path)
             olist.append(path)
-        to_isis(outname + '.net', self._cn.data, serials)
+        to_isis(outname + '.net', self._cn.data, serials, *args, **kwargs)
         write_filelist(olist, outname + '.lis')
 
     def to_bal(self):
