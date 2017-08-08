@@ -905,10 +905,7 @@ class CandidateGraph(nx.Graph):
         >>> G = CandidateGraph()
         >>> G.add_edges_from([('A', 'B'), ('A', 'C'), ('B', 'C'), ('B', 'D'), ('A', 'E'), ('A', 'F'), ('E', 'F') ])
         >>> res = G.compute_unique_fully_connected_components()
-        >>> res[0].sort()
-        >>> res[1].sort()
-        >>> res.sort()
-        >>> res  # Sorted to force key order
+        >>> sorted(map(sorted,res))
         [['A', 'B', 'C'], ['A', 'E', 'F']]
         """
         return [i for i in nx.enumerate_all_cliques(self) if len(i) > size]
@@ -930,8 +927,8 @@ class CandidateGraph(nx.Graph):
         >>> fc = G.compute_fully_connected_components()
         >>> len(fc) #A, B, C, E, A  - D is omitted because it is a singular terminal node
         5
-        >>> # fc  # Or there about given dict ordering inside the graph
-        ['A', 'B', 'C'], ['A', 'E', 'F']]
+        >>> sorted(map(sorted,fc['A']))  # Sort inner and outer lists
+        [['A', 'B', 'C'], ['A', 'E', 'F']]
         """
         fully_connected = self.compute_unique_fully_connected_components()
         fc = defaultdict(list)
