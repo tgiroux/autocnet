@@ -32,6 +32,7 @@ MAXSIZE = {0: None,
            8: 12500,
            12: 15310}
 
+
 class CandidateGraph(nx.Graph):
     """
     A NetworkX derived directed graph to store candidate overlap images.
@@ -355,6 +356,7 @@ class CandidateGraph(nx.Graph):
 
             # If a json is supplied, load as dict
             if type(adjacency) is not dict:
+                adjacency = os.path.join(basepath, adjacency)
                 try:
                     assert os.path.exists(adjacency)
                 except AssertionError:
@@ -643,6 +645,8 @@ class CandidateGraph(nx.Graph):
                           of keys in graph_masks
         """
         return_lis = []
+        if callable(function):
+            function = function.__name__
 
         for s, d, edge in self.edges_iter(data=True):
             try:
@@ -655,7 +659,6 @@ class CandidateGraph(nx.Graph):
 
         if any(return_lis):
             return return_lis
-
 
     def apply(self, function, on='edge',out=None, args=(), **kwargs):
         """
