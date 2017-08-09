@@ -860,8 +860,6 @@ class CandidateGraph(nx.Graph):
     #     except:
     #         return s.edges_iter([self.node[node]['image_path'] for node in nbunch], data=data)
 
-
-
     def subgraph_from_matches(self):
         """
         Returns a sub-graph where all edges have matches.
@@ -1103,7 +1101,7 @@ class CandidateGraph(nx.Graph):
 
     def identify_potential_overlaps(self, **kwargs):
         cc = control.identify_potential_overlaps(self, self.controlnetwork, **kwargs)
-        print(cc)
+        return cc
 
     def to_isis(self, outname, *args, **kwargs):
         serials = self.serials()

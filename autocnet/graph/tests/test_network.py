@@ -267,7 +267,6 @@ def test_update_data(graph):
    ntime = graph.graph['modifieddate']
    assert ctime != ntime
 
-
 def test_is_complete(graph):
     # Create a small incomplete graph with three nodes and two edges
     incomplete_graph = network.CandidateGraph()
@@ -276,7 +275,7 @@ def test_is_complete(graph):
 
     assert False == incomplete_graph.is_complete()
     assert True == graph.is_complete()
-    
+
 def test_apply(graph):
     def set_matches(x):
         s,d,e = x
@@ -291,6 +290,12 @@ def test_apply(graph):
 
     for matches in results:
         assert len(matches) == 3
+
+def test_tofilelist(graph):
+    flist = graph.to_filelist()
+    truth = ['AS15-M-0297_SML.png', 'AS15-M-0298_SML.png', 'AS15-M-0299_SML.png']
+    basenames = sorted([os.path.basename(i) for i in flist])
+    assert truth == basenames
 
 def test_footprints(geo_graph):
     # This is just testing the interface - should get a geodataframe back

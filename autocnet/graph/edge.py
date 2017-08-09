@@ -67,32 +67,16 @@ class Edge(dict, MutableMapping):
             if not k in o.keys():
                 eq = False
                 return eq
-
             if isinstance(v, pd.DataFrame):
                 if not v.equals(o[k]):
                     eq = False
+                    print(k)
             elif isinstance(v, np.ndarray):
                 if not v.all() == o[k].all():
                     eq = False
+                    print(k)
 
         return eq
-
-    """@property
-    def masks(self):
-        mask_lookup = {'fundamental': 'fundamental_matrix'}
-        if not hasattr(self, '_masks'):
-            if isinstance(self.matches, pd.DataFrame):
-                self._masks = pd.DataFrame(True, columns=['symmetry'],
-                                           index=self.matches.index)
-            else:
-                self._masks = pd.DataFrame()
-        return self._masks
-
-    @masks.setter
-    def masks(self, v):
-        column_name = v[0]
-        boolean_mask = v[1]
-        self.masks[column_name] = boolean_mask"""
 
     def match(self, k=2, **kwargs):
 
@@ -135,27 +119,6 @@ class Edge(dict, MutableMapping):
 
     def decompose_and_match(*args, **kwargs):
         pass
-
-    """
-    def extract_subset(self, *args, **kwargs):
-        self.compute_overlap()
-
-        # Extract the source
-        minx, maxx, miny, maxy = self['source_mbr']
-        xystart = (minx, miny)
-        pixels=[minx, miny, maxx-minx, maxy-miny]
-        node = self.source
-        arr = node.geodata.read_array(pixels=pixels)
-        node.extract_features(arr, xystart=xystart, *args, **kwargs)
-
-        # Extract the destination
-        minx, maxx, miny, maxy = self['destin_mbr']
-        xystart = (minx, miny)
-        pixels=[minx, miny, maxx-minx, maxy-miny]
-        node = self.destination
-        arr = node.geodata.read_array(pixels=pixels)
-        node.extract_features(arr, xystart=xystart, *args, **kwargs)
-    """
 
     def overlap_check(self):
         """Creates a mask for matches on the overlap"""
