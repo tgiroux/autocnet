@@ -110,10 +110,10 @@ class TestNode(object):
         # With keypoints to npy
         reference = pd.DataFrame(np.arange(10).reshape(5,2), columns=['x', 'y'])
         node.keypoints = reference
-        tmpdir.join('kps.npz')
-        node.save_features(os.path.join(basename, 'kps.npz'))
+        tmpdir.join('kps')
+        node.save_features(os.path.join(basename, 'kps'))
         node.keypoints = None
-        node.load_features(os.path.join(basename, 'kps.npz'))
+        node.load_features(os.path.join(basename, 'kps_None.npz'))
         assert node.keypoints.equals(reference)
 
     def test_coverage(self, node):
@@ -135,4 +135,3 @@ class TestNode(object):
     def test_footprint(self, geo_node):
         # Esnure that a shapely compliant poly is being returned
         assert isinstance(geo_node.footprint, Polygon)
-        
