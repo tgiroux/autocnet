@@ -276,13 +276,17 @@ def test_is_complete(graph):
     assert False == incomplete_graph.is_complete()
     assert True == graph.is_complete()
 
+def test_get_matches(candidategraph):
+    matches = candidategraph.get_matches()
+    assert len(matches) == 3
+    assert 'source_x' in matches[0].columns
+    assert len(matches[0]) == 8
+
 def test_apply(graph):
-    def set_matches(x):
-        s,d,e = x
+    def set_matches(e):
         e.matches = ['fake', 'fake', 'fake']
 
-    def get_matches(x):
-        s,d,e = x
+    def get_matches(e):
         return e.matches
 
     graph.apply(set_matches)

@@ -228,34 +228,6 @@ class CandidateGraph(nx.Graph):
         return self.node[node_index]['image_name']
 
     def get_matches(self, clean_keys=[]):
-        """
-        For each edge get all valid matches, masked by the clean_keys.
-
-        Parameters
-        ----------
-        clean_keys: list
-                    of masks to use
-
-        Returns
-        -------
-        matches : list
-                  of matches dataframes
-        """
-        matches = []
-        for s, d, e in self.edges_iter(data=True):
-            match, _ = e.clean(clean_keys=clean_keys)
-            match = match[['source_image', 'source_idx',
-                           'destination_image', 'destination_idx']]
-            skps = e.get_keypoints('source', index=match.source_idx)
-            skps.columns = ['source_x', 'source_y']
-            dkps = e.get_keypoints('destination', index=match.destination_idx)
-            dkps.columns = ['destination_x', 'destination_y']
-            match = match.join(skps, on='source_idx')
-            match = match.join(dkps, on='destination_idx')
-            matches.append(match)
-        return matches
-
-    def get_matches(self, clean_keys=[]):
         matches = []
         for s, d, e in self.edges_iter(data=True):
             match, _ = e.clean(clean_keys=clean_keys)
@@ -314,18 +286,7 @@ class CandidateGraph(nx.Graph):
             print('Processing {}'.format(node['image_name']))
             node.extract_features_with_tiling(tilesize=tilesize, overlap=overlap, *args, **kwargs)
 
-    def extract_subsets(self, *args, **kwargs):
-        """
-        Extracts features from each image in those regions estimated to be
-        overlapping.
-
-        *args and **kwargs are passed to the feature extractor.  For example,
-        passing method='sift' will cause the extractor to use the sift method.
-        """
-        for source, destination, e in self.edges_iter(data=True):
-            e.extract_subset(*args, **kwargs)
-
-    def save_features(self, out_path, nodes=[], **kwargs):
+    def save_features(self, out_path):
         """
 
         Save the features (keypoints and descriptors) for the
@@ -336,15 +297,11 @@ class CandidateGraph(nx.Graph):
         out_path : str
                    Location of the output file.  If the file exists,
                    features are appended.  Otherwise, the file is created.
-
-        nodes : list
-                of nodes to save features for.  If empty, save for all nodes
         """
 
-        for i, n in self.nodes_iter(data=True):
-            if nodes and not i in nodes:
-                continue
-            n.save_features(out_path, **kwargs)
+
+
+        self.apply(Node.save_features, args=(out_path,), on='node')
 
     def load_features(self, in_path, nodes=[], nfeatures=None, **kwargs):
         """
@@ -457,7 +414,7 @@ class CandidateGraph(nx.Graph):
         mst = nx.minimum_spanning_tree(self)
         return self.create_edge_subgraph(mst.edges())
 
-    def apply_func_to_edges(self, function, *args, **kwargs):
+    def apply_func_to_edges(self, function, nodes=[], *args, **kwargs):
         """
         Iterates over edges using an optional mask and and applies the given function.
         If func is not an attribute of Edge, raises AttributeError
@@ -485,7 +442,6 @@ class CandidateGraph(nx.Graph):
 
         if any(return_lis):
             return return_lis
-
 
     def apply(self, function, on='edge',out=None, args=(), **kwargs):
         """
@@ -526,12 +482,15 @@ class CandidateGraph(nx.Graph):
             raise TypeError('{} is not callable.'.format(function))
 
         res = []
+        obj = 1
+        # We just want to the object, not the indices, so slcie appropriately
+        if options[on] == self.edges_iter:
+            obj = 2
         for elem in options[on](data=True):
-            res.append(function(elem, *args, **kwargs))
+            res.append(function(elem[obj], *args, **kwargs))
 
         if out: out=res
         else: return res
-
 
     def symmetry_checks(self):
         '''
@@ -831,34 +790,6 @@ class CandidateGraph(nx.Graph):
 
         H.graph = self.graph
         return H
-
-    # def nodes_iter(self, data=False):
-    #     s = super(CandidateGraph, self)
-    #     nodes = s.nodes_iter(data)
-    #     ret = []
-    #     for n in nodes:
-    #         if data:
-    #             if n[0] in self.nodemask:
-    #                 ret.append(n)
-    #         else:
-    #             if n in self.nodemask:
-    #                 ret.append(n)
-    #     return iter(ret)
-
-    # def edges_iter(self, nbunch=[], data=False, key=False):
-    #     s = super(CandidateGraph, self)
-    #     if not isinstance(nbunch, list):
-    #         nbunch = [nbunch]
-    #
-    #     if nbunch:
-    #         nbunch = [node for node in nbunch if nbunch not in list(self.nodemask)]
-    #     else:
-    #         nbunch = list(self.nodemask)
-    #
-    #     try:
-    #         return s.edges_iter(nbunch=nbunch, data=data)
-    #     except:
-    #         return s.edges_iter([self.node[node]['image_path'] for node in nbunch], data=data)
 
     def subgraph_from_matches(self):
         """

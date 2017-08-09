@@ -402,24 +402,20 @@ class Node(dict, MutableMapping):
     def save_features(self, out_path):
         """
         Save the extracted keypoints and descriptors to
-        the given HDF5 file.  By default, the .npz files are saved
+        the given file.  By default, the .npz files are saved
         along side the image, e.g. in the same folder as the image.
 
         Parameters
         ----------
         out_path : str or object
-                   PATH to the hdf file or a HDFDataset object handle
-
-        format : {'npy', 'hdf'}
-                 The desired output format.
+                   PATH to the directory for output and base file name
         """
-
         if self.keypoints.empty:
             warnings.warn('Node {} has not had features extracted.'.format(self['node_id']))
             return
 
         io_keypoints.to_npy(self.keypoints, self.descriptors,
-                            out_path)
+                            out_path + '_{}.npz'.format(self['node_id']))
 
     def coverage_ratio(self, clean_keys=[]):
         """
