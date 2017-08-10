@@ -233,9 +233,8 @@ class CandidateGraph(nx.Graph):
         image_name : str
                      The file name of or path to the image to add
 
-        adjacency : dict or path to json
-                    The an adjacency dictionary or json file containing
-                    the adjacency dictionary for the image
+        adjacency : string or Node list
+                    The list of adjacent Nodes or image files for this image
 
         basepath : str
                    The directory path for the image
@@ -282,52 +281,6 @@ class CandidateGraph(nx.Graph):
             # Return the Node reference
             return node
 
-        def detect_adjacency(src_node, target_nodes):
-            """
-            Returns the target nodes, if any, that intersect with the source
-            node
-
-            src_node : Node
-                       The Node we are testing for adjacency
-            target_nodes : Node List
-                           The list of Nodes that may intersect with the source
-                           Node
-
-            Returns
-            -------
-            Node List : The list of Nodes that intersect with the source Node
-            """
-            # Get datasets from target nodes
-            adjacent_nodes = list()
-            valid_datasets = list()
-            datasets = [node.geodata for node in target_nodes]
-
-            # Make sure target nodes have valid footprints
-            for ds in datasets:
-                # Skip the source node if it's in the list of target nodes
-                if ds.file_name == src_node['image_path']:
-                    continue
-                # Grab footprints from nodes that have them
-                fp = ds.footprint
-                if fp and fp.IsValid():
-                    valid_datasets.append(ds)
-                else:
-                    warnings.warn('Missing or invalid geospatial data for '
-                                  '{}'.format(os.path.basename(ds.file_name)))
-
-            # Grab the footprints and test for intersection
-            for ds in valid_datasets:
-                ds_file_name = os.path.basename(ds.file_name)
-                try:
-                    if new_node.geodata.footprint.Intersects(ds.footprint):
-                        adjacent_nodes.append(ds_file_name)
-                except:
-                    warnings.warn('Failed to calculate intersection between {} '
-                                  'and {}'.format(image_name, ds_file_name))
-
-            # Return the adjacent Nodes for the source Node
-            return adjacent_nodes
-
         # Check if image is already in the graph
         if image_name in self.graph['node_name_map']:
             warnings.warn("{} is already in the graph".format(image_name))
@@ -343,42 +296,22 @@ class CandidateGraph(nx.Graph):
         # Create new node within graph
         new_node = add_node(image_path)
 
-        # If adjacency supplied, build list of adjacent nodes
+        # If adjacency supplied make sure it's the right type
         if adjacency:
             # Type check
             try:
-                assert type(adjacency) is dict or type(adjacency) is str
+                assert type(adjacency) is list
             except AssertionError:
-                raise TypeError("Named parameter 'adjacency' must be a dict or "
-                                "path to a json file containing the adjacency "
-                                "dict; Could not add {} to "
+                raise TypeError("Named parameter 'adjacency' must be a list of"
+                                "adjacent Node objects or list of adjacent "
+                                "images; Could not add {} to "
                                 "CandidateGraph".format(image_name))
-
-            # If a json is supplied, load as dict
-            if type(adjacency) is not dict:
-                adjacency = os.path.join(basepath, adjacency)
-                try:
-                    assert os.path.exists(adjacency)
-                except AssertionError:
-                    raise FileNotFoundError(
-                        "Could not load adjacency {}; "
-                        "File does not exist; Could not add {} to "
-                        "CandidateGraph".format(adjacency, image_name))
-                adjacency = io_json.read_json(adjacency)
-
-            # Make sure added image is in adjacency dict
-            try:
-                assert image_name in adjacency.keys()
-            except AssertionError:
-                raise KeyError("Adjacency dict contains no key for"
-                               "{0}; Could not add {0} to "
-                                "CandidateGraph".format(image_name))
-
-            # Build list of adjacent images from dict
-            adjacent_nodes = adjacency[image_name]
 
         # If adjacency not supplied, figure it out from footprints
         else:
+            # Create empty adjacency list
+            adjacency = list()
+
             # Make sure new node has valid footprint; If not, it will be a
             # disconnected node on the graph
             if not new_node.geodata.footprint or not \
@@ -389,12 +322,36 @@ class CandidateGraph(nx.Graph):
                 return
 
             # Detect adjacency between our new node and the CG's nodes
-            adjacent_nodes = detect_adjacency(new_node,
-                                              [self.node[idx] for idx in self.nodes()])
+            target_nodes = [self.node[idx] for idx in self.nodes()]
+            valid_datasets = list()
+            datasets = [node.geodata for node in target_nodes]
 
-        # Build new edge(s)
-        for a_img in adjacent_nodes:
-            # Must be string (image name)
+            # Make sure target nodes have valid footprints
+            for ds in datasets:
+                # Skip the source node if it's in the list of target nodes
+                if ds.file_name == new_node['image_path']:
+                    continue
+                # Grab footprints from nodes that have them
+                fp = ds.footprint
+                if fp and fp.IsValid():
+                    valid_datasets.append(ds)
+                else:
+                    warnings.warn('Missing or invalid geospatial data for '
+                                  '{}'.format(os.path.basename(ds.file_name)))
+
+            # Grab the footprints and test for intersection
+            for ds in valid_datasets:
+                ds_file_name = os.path.basename(ds.file_name)
+                try:
+                    if new_node.geodata.footprint.Intersects(ds.footprint):
+                        adjacency.append(ds_file_name)
+                except:
+                    warnings.warn('Failed to calculate intersection between {} '
+                                  'and {}'.format(image_name, ds_file_name))
+
+        # Build new edge(s) from adjacency
+        for a_img in adjacency:
+            # If string (image name)
             if isinstance(a_img, str):
                 # If adjacent img is already in the graph
                 if a_img in self.graph['node_name_map'].keys():
@@ -408,10 +365,23 @@ class CandidateGraph(nx.Graph):
                     # Set the nodes for the new graph
                     s = new_node
                     d = add_node(os.path.join(basepath, a_img))
+            # If Node
+            elif isinstance(a_img, Node):
+                # If it's already in the graph, it'll be the source node,
+                # since its idx is lower than our new node
+                if a_img['image_name'] in [self.node[idx]['image_name'] for idx in self.nodes()]:
+                    s = a_img
+                    d = new_node
+                # Otherwise, can't create edge
+                else:
+                    warnings.warn("{0} is not in the graph; No Edge between"
+                                  "{0} and {1} can be "
+                                  "created".format(a_img['image_name'],
+                                                   image_name))
+                    continue
             else:
-                raise TypeError("Adjacency dict must have image names as keys "
-                                "and lists of adjacent image names as values; "
-                                "Could not add {} to "
+                raise TypeError("Adjacency list contains Node objects or image "
+                                "names; Could not add {} to "
                                 "CandidateGraph".format(image_name))
 
             # Create the new edge
@@ -427,27 +397,20 @@ class CandidateGraph(nx.Graph):
                 # Type Check
                 try:
                     assert callable(apply_func) or type(apply_func) is list
+                    # If it's a function, apply it
+                    if callable(apply_func):
+                        apply_func(new_edge)
+                    # If it's a list of functions, apply all of them
+                    else:
+                        [func(new_edge) for func in apply_func]
                 except AssertionError:
                     raise TypeError(ERR)
-
-                # If it's a function, apply it
-                if callable(apply_func):
-                    apply_func(new_edge)
-                # If it's a list of functions, apply all of them
-                else:
-                    for func in apply_func:
-                        try:
-                            assert callable(func)
-                        except AssertionError:
-                            raise TypeError(ERR)
-                        func(new_edge)
 
             # Grab node ids
             s_id = s['node_id']
             d_id = d['node_id']
 
             # Make sure source node is a key in the edge lookup
-            # TODO: Is there a better way to do this?
             if s_id not in self.edge.keys():
                 self.edge[s_id] = dict()
 
