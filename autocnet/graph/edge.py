@@ -59,24 +59,8 @@ class Edge(dict, MutableMapping):
         """.format(self.source, self.destination, self.masks)
 
     def __eq__(self, other):
-        eq = True
-        d = self.__dict__
-        o = other.__dict__
-        for k, v in d.items():
-            # If the attribute key is missing they can not be equal
-            if not k in o.keys():
-                eq = False
-                return eq
-            if isinstance(v, pd.DataFrame):
-                if not v.equals(o[k]):
-                    eq = False
-                    print(k)
-            elif isinstance(v, np.ndarray):
-                if not v.all() == o[k].all():
-                    eq = False
-                    print(k)
-
-        return eq
+        return utils.compare_dicts(self.__dict__, other.__dict__) *\
+               utils.compare_dicts(self, other)
 
     def match(self, k=2, **kwargs):
 

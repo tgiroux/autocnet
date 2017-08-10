@@ -7,7 +7,6 @@ import numpy as np
 def test_save_project(tmpdir, candidategraph):
     path = tmpdir.join('prject.proj')
     candidategraph.save(path.strpath)
-
     candidategraph2 = load(path.strpath)
 
     assert candidategraph == candidategraph2

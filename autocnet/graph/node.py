@@ -65,7 +65,6 @@ class Node(dict, MutableMapping):
         self['image_path'] = image_path
         self['node_id'] = node_id
         self['hash'] = image_name
-        self._mask_arrays = {}
         self.descriptors = None
         self.keypoints = pd.DataFrame()
         self.masks = pd.DataFrame()
@@ -81,7 +80,7 @@ class Node(dict, MutableMapping):
         """.format(self['node_id'], self['image_name'], self['image_path'],
                    self.nkeypoints, self.masks, self.__class__)
 
-    def __hash__(self):
+    def __hash__(self): #pragma: no cover
         return hash(repr(self))
 
     def __gt__(self, other):
@@ -89,7 +88,7 @@ class Node(dict, MutableMapping):
         oid = other['node_id']
         return myid > oid
 
-    def __geq__(self, other):
+    def __ge__(self, other):
         myid = self['node_id']
         oid = other['node_id']
         return myid >= oid
@@ -99,7 +98,7 @@ class Node(dict, MutableMapping):
         oid = other['node_id']
         return myid < oid
 
-    def __leq__(self, other):
+    def __le__(self, other):
         myid = self['node_id']
         oid = other['node_id']
         return myid <= oid
@@ -108,19 +107,9 @@ class Node(dict, MutableMapping):
         return str(self['node_id'])
 
     def __eq__(self, other):
-        eq = True
-        d = self.__dict__
-        o = other.__dict__
-        for k, v in d.items():
-            if isinstance(v, pd.DataFrame):
-                if not v.equals(o[k]):
-                    print('NODE', k)
-                    eq = False
-            elif isinstance(v, np.ndarray):
-                if not v.all() == o[k].all():
-                    print('NODE', k)
-                    eq = False
-        return eq
+        return utils.compare_dicts(self.__dict__, other.__dict__) *\
+               utils.compare_dicts(self, other)
+
 
     @property
     def geodata(self):
@@ -169,8 +158,8 @@ class Node(dict, MutableMapping):
         Returns
         -------
         coverage_area :  float
-                        Area covered by the generated
-                        keypoints
+                         percentage area covered by the generated
+                         keypoints
         """
 
         points = self.get_keypoint_coordinates()
@@ -182,9 +171,7 @@ class Node(dict, MutableMapping):
 
         total_area = max_x * max_y
 
-        self.coverage_area = (hull_area/total_area)*100
-
-        return self.coverage_area
+        return hull_area / total_area
 
     def get_byte_array(self, band=1):
         """
@@ -258,17 +245,21 @@ class Node(dict, MutableMapping):
 
         return keypoints
 
-    def get_raw_keypoint_coordinates(self, index):
+    def get_raw_keypoint_coordinates(self, index=slice(None)):
         """
         The performance of get_keypoint_coordinates can be slow
         due to the ability for fancier indexing.  This method
         returns coordinates using numpy array accessors.
+
+        Parameters
+        ----------
+        index : iterable
+                positional indices to return from the global keypoints dataframe
         """
-        index = index.astype(np.int)
         return self.keypoints.values[index,:2]
 
     @staticmethod
-    def _extract_features(array, *args, **kwargs):
+    def _extract_features(array, *args, **kwargs):  # pragma: no cover
         """
         Extract features for the node
 
@@ -416,25 +407,6 @@ class Node(dict, MutableMapping):
 
         io_keypoints.to_npy(self.keypoints, self.descriptors,
                             out_path + '_{}.npz'.format(self['node_id']))
-
-    def coverage_ratio(self, clean_keys=[]):
-        """
-        Compute the ratio $area_{convexhull} / area_{total}$
-
-        Returns
-        -------
-        ratio : float
-                The ratio of convex hull area to total area.
-        """
-        ideal_area = self.geodata.pixel_area
-        if not hasattr(self, 'keypoints'):
-            raise AttributeError('Keypoints must be extracted already, they have not been.')
-
-        #TODO: clean_keys are disabled - re-enable.
-        keypoints = self.get_keypoint_coordinates()
-
-        ratio = convex_hull_ratio(keypoints, ideal_area)
-        return ratio
 
     def plot(self, clean_keys=[], **kwargs):  # pragma: no cover
         return plot_node(self, clean_keys=clean_keys, **kwargs)

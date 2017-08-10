@@ -89,15 +89,18 @@ class CandidateGraph(nx.Graph):
         self.graph['modifieddate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
 
     def __eq__(self, other):
-        eq = True
         # Check the nodes
+        if sorted(self.nodes()) != sorted(other.nodes()):
+            return False
         for n in self.nodes_iter():
             if not self.node[n] == other.node[n]:
-                eq = False
+                return False
+        if sorted(self.edges()) != sorted(other.edges()):
+            return False
         for s, d in self.edges_iter():
             if not self.edge[s][d] == other.edge[s][d]:
-                eq = False
-        return eq
+                return False
+        return True
 
     def _order_adjacency(self):  # pragma: no cover
         self.adj = OrderedDict(sorted(self.adj.items()))

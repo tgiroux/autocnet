@@ -44,9 +44,9 @@ def save(network, projectname):
     """
     # Convert the graph into json format
     js = json_graph.node_link_data(network)
-
     with ZipFile(projectname, 'w') as pzip:
         js_str = json.dumps(js, cls=NumpyEncoder, sort_keys=True, indent=4)
+        print(js_str)
         pzip.writestr('graph.json', js_str)
 
         # Write the array node_attributes to hdf
@@ -107,6 +107,8 @@ def load(projectname):
         for d in data['nodes']:
             n = Node()
             for k, v in d.items():
+                if k == 'id':
+                    continue
                 n[k] = v
             try:
                 # Load the byte stream for the nested npz file into memory and then unpack
@@ -125,6 +127,8 @@ def load(projectname):
             edge.destination = cg.node[e['target']]
 
             for k, v in e.items():
+                if k == 'target' or k == 'source':
+                    continue
                 edge[k] = v
 
             try:

@@ -34,8 +34,8 @@ def candidategraph():
         e['fundamental_matrix'] = np.random.random(size=(3,3))
         e.matches = matches
         e.masks = masks
-        e['source_mbr'] = [(0,1), (0,2)]
-        e['destin_mbr'] = [('a', 'b'), ('c', 'd')]
+        e['source_mbr'] = [[0,1], [0,2]]
+        e['destin_mbr'] = [[0.5, 0.5], [1, 1]]
 
     kps = np.array([[233.358475,	105.288162,	0.035672, 4.486887,	164.181046,	0.0, 1.0],
                     [366.288116,	98.761131,	0.035900, 4.158592,	147.278580,	0.0, 1.0],

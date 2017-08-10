@@ -11,7 +11,7 @@ from autocnet.graph.node import Node
 from plio.io.io_gdal import GeoDataset
 
 @pytest.fixture(scope='session')
-def candidategraph(geodata_a, geodata_b, geodata_c):
+def candidategraph(node_a, node_b, node_c):
     cg = CandidateGraph()
 
     # Create a candidategraph object - we instantiate a real CandidateGraph to
@@ -40,32 +40,48 @@ def candidategraph(geodata_a, geodata_b, geodata_c):
     cg.get_matches = MagicMock(return_value=matches)
 
     # Mock in the node objects onto the candidate graph
-    cg.node[0] = geodata_a
-    cg.node[1] = geodata_b
-    cg.node[2] = geodata_c
+    cg.node[0] = node_a
+    cg.node[1] = node_b
+    cg.node[2] = node_c
 
     return cg
+
+@pytest.fixture(scope='session')
+def node_a(geodata_a):
+    na = Node(node_id=0, image_path='/foo/bar/', image_name='pretty.png')
+    na._geodata = geodata_a
+    return na
+
+@ pytest.fixture(scope='session')
+def node_b(geodata_b):
+    nb = Node(node_id=1, image_path='/foo/bar/', image_name='ugly.tif')
+    nb._geodata = geodata_b
+    return nb
+
+@ pytest.fixture(scope='session')
+def node_c(geodata_c):
+    nc = Node(node_id=2, image_path='/foo/bar/', image_name='duckling.jpg')
+    nc._geodata = geodata_c
+    return nc
 
 #TODO: Can these be a single parameterized fixture - so much boilerplate!
 @pytest.fixture(scope='session')
 def geodata_a():
-    a = Mock(spec=Node)
-    a.geodata = Mock(spec=GeoDataset)
-    a.geodata.pixel_to_latlon = MagicMock(side_effect=lambda x, y: (x, y))
+    a = Mock(spec=GeoDataset)
+    a.pixel_to_latlon = MagicMock(side_effect=lambda x, y: (x, y))
     return a
 
 @pytest.fixture(scope='session')
 def geodata_b():
-    b = Mock(spec=Node)
-    b.geodata = Mock(spec=GeoDataset)
-    b.geodata.pixel_to_latlon = MagicMock(side_effect=lambda x, y: (x, y))
+    b = Mock(spec=GeoDataset)
+    b.pixel_to_latlon = MagicMock(side_effect=lambda x, y: (x, y))
     return b
 
 @pytest.fixture(scope='session')
 def geodata_c():
     c = Mock(spec=Node)
-    c.geodata = Mock(spec=GeoDataset)
-    c.geodata.pixel_to_latlon = MagicMock(side_effect=lambda x, y: (x, y))
+    c = Mock(spec=GeoDataset)
+    c.pixel_to_latlon = MagicMock(side_effect=lambda x, y: (x, y))
     return c
 
 @pytest.fixture(scope='session')
