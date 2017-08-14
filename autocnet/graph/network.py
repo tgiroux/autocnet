@@ -231,7 +231,6 @@ class CandidateGraph(nx.Graph):
         """
         return self.node[node_index]['image_name']
 
-<<<<<<< HEAD
     def get_matches(self, clean_keys=[]):
         matches = []
         for s, d, e in self.edges_iter(data=True):
@@ -246,11 +245,8 @@ class CandidateGraph(nx.Graph):
             match = match.join(dkps, on='destination_idx')
             matches.append(match)
         return matches
-
-    def add_image(self, *args, **kwargs):
-=======
+        
     def add_image(self, image_name, adjacency=None, basepath=None, apply_func=None):
->>>>>>> upstream/dev
         """
         Adds an image node to the graph.
 
