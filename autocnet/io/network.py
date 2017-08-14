@@ -46,14 +46,12 @@ def save(network, projectname):
     js = json_graph.node_link_data(network)
     with ZipFile(projectname, 'w') as pzip:
         js_str = json.dumps(js, cls=NumpyEncoder, sort_keys=True, indent=4)
-        print(js_str)
         pzip.writestr('graph.json', js_str)
 
         # Write the array node_attributes to hdf
         for n, data in network.nodes_iter(data=True):
             ndarrays_to_write = {}
             for k, v in data.__dict__.items():
-                print(k, v)
                 if isinstance(v, np.ndarray):
                     ndarrays_to_write[k] = v
                 elif isinstance(v, pd.DataFrame):
