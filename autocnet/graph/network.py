@@ -1,4 +1,4 @@
-from collections import OrderedDict
+from collections import defaultdict, OrderedDict
 import itertools
 import math
 import os
@@ -16,6 +16,7 @@ import shapely.ops
 from plio.io import io_hdf, io_json
 from plio.utils import utils as io_utils
 from plio.io.io_gdal import GeoDataset
+from plio.io.isis_serial_number import generate_serial_number
 from autocnet.cg.cg import geom_mask
 from autocnet.cg.cg import compute_voronoi
 from autocnet.graph import markov_cluster
@@ -23,6 +24,7 @@ from autocnet.graph.edge import Edge
 from autocnet.graph.node import Node
 from autocnet.io import network as io_network
 from autocnet.vis.graph_view import plot_graph, cluster_plot
+from autocnet.control import control
 
 
 # The total number of pixels squared that can fit into the keys number of GB of RAM for SIFT.
@@ -87,19 +89,19 @@ class CandidateGraph(nx.Graph):
         self.graph['creationdate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
         self.graph['modifieddate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
 
-    def get_matches(self, clean_keys=[], edges=[]):
-        return self.apply_func_to_edges('get_matches')
-
     def __eq__(self, other):
-        eq = True
         # Check the nodes
+        if sorted(self.nodes()) != sorted(other.nodes()):
+            return False
         for n in self.nodes_iter():
             if not self.node[n] == other.node[n]:
-                eq = False
+                return False
+        if sorted(self.edges()) != sorted(other.edges()):
+            return False
         for s, d in self.edges_iter():
             if not self.edge[s][d] == other.edge[s][d]:
-                eq = False
-        return eq
+                return False
+        return True
 
     def _order_adjacency(self):  # pragma: no cover
         self.adj = OrderedDict(sorted(self.adj.items()))
@@ -116,7 +118,6 @@ class CandidateGraph(nx.Graph):
             raise KeyError('Value must be in {}'.format(','.join(map(str,MAXSIZE.keys()))))
         else:
             self._maxsize = MAXSIZE[value]
-
 
     @classmethod
     def from_filelist(cls, filelist, basepath=None):
@@ -190,7 +191,9 @@ class CandidateGraph(nx.Graph):
         --------
         >>> from autocnet.examples import get_path
         >>> inputfile = get_path('adjacency.json')
-        >>> candidate_graph = network.CandidateGraph.from_adjacency(inputfile)
+        >>> candidate_graph = CandidateGraph.from_adjacency(inputfile)
+        >>> sorted(candidate_graph.nodes())
+        [0, 1, 2, 3, 4, 5]
         """
         if not isinstance(input_adjacency, dict):
             input_adjacency = io_json.read_json(input_adjacency)
@@ -199,6 +202,10 @@ class CandidateGraph(nx.Graph):
                 input_adjacency[k] = [os.path.join(basepath, i) for i in v]
                 input_adjacency[os.path.join(basepath, k)] = input_adjacency.pop(k)
         return cls(input_adjacency)
+
+    @classmethod
+    def from_save(cls, input_file):
+        return io_network.load(input_file)
 
     def _update_date(self):
         """
@@ -224,6 +231,21 @@ class CandidateGraph(nx.Graph):
         """
         return self.node[node_index]['image_name']
 
+    def get_matches(self, clean_keys=[]):
+        matches = []
+        for s, d, e in self.edges_iter(data=True):
+            match, _ = e.clean(clean_keys=clean_keys)
+            match = match[['source_image', 'source_idx',
+                           'destination_image', 'destination_idx']]
+            skps = e.get_keypoints('source', index=match.source_idx)
+            skps.columns = ['source_x', 'source_y']
+            dkps = e.get_keypoints('destination', index=match.destination_idx)
+            dkps.columns = ['destination_x', 'destination_y']
+            match = match.join(skps, on='source_idx')
+            match = match.join(dkps, on='destination_idx')
+            matches.append(match)
+        return matches
+        
     def add_image(self, image_name, adjacency=None, basepath=None, apply_func=None):
         """
         Adds an image node to the graph.
@@ -450,19 +472,7 @@ class CandidateGraph(nx.Graph):
             print('Processing {}'.format(node['image_name']))
             node.extract_features_with_tiling(tilesize=tilesize, overlap=overlap, *args, **kwargs)
 
-    def extract_subsets(self, *args, **kwargs):
-        """
-        Extracts features from each image in those regions estimated to be
-        overlapping.
-
-        *args and **kwargs are passed to the feature extractor.  For example,
-        passing method='sift' will cause the extractor to use the sift method.
-        """
-        for source, destination, e in self.edges_iter(data=True):
-            e.extract_subset(*args, **kwargs)
-
-
-    def save_features(self, out_path, nodes=[], **kwargs):
+    def save_features(self, out_path):
         """
 
         Save the features (keypoints and descriptors) for the
@@ -473,15 +483,11 @@ class CandidateGraph(nx.Graph):
         out_path : str
                    Location of the output file.  If the file exists,
                    features are appended.  Otherwise, the file is created.
-
-        nodes : list
-                of nodes to save features for.  If empty, save for all nodes
         """
 
-        for i, n in self.nodes_iter(data=True):
-            if nodes and not i in nodes:
-                continue
-            n.save_features(out_path, **kwargs)
+
+
+        self.apply(Node.save_features, args=(out_path,), on='node')
 
     def load_features(self, in_path, nodes=[], nfeatures=None, **kwargs):
         """
@@ -594,7 +600,7 @@ class CandidateGraph(nx.Graph):
         mst = nx.minimum_spanning_tree(self)
         return self.create_edge_subgraph(mst.edges())
 
-    def apply_func_to_edges(self, function, *args, **kwargs):
+    def apply_func_to_edges(self, function, nodes=[], *args, **kwargs):
         """
         Iterates over edges using an optional mask and and applies the given function.
         If func is not an attribute of Edge, raises AttributeError
@@ -662,12 +668,15 @@ class CandidateGraph(nx.Graph):
             raise TypeError('{} is not callable.'.format(function))
 
         res = []
+        obj = 1
+        # We just want to the object, not the indices, so slcie appropriately
+        if options[on] == self.edges_iter:
+            obj = 2
         for elem in options[on](data=True):
-            res.append(function(elem, *args, **kwargs))
+            res.append(function(elem[obj], *args, **kwargs))
 
         if out: out=res
         else: return res
-
 
     def symmetry_checks(self):
         '''
@@ -763,24 +772,20 @@ class CandidateGraph(nx.Graph):
             filelist.append(node['image_path'])
         return filelist
 
-    def generate_cnet(self, *args, deepen=False, **kwargs):
+    def generate_control_network(self, clean_keys=['fundamental']):
         """
-        Compute (or re-compute) a CorrespondenceNetwork attribute
+        Generate a correspondence graph from the current candidate graph object.
+        The control network is a single graph object, composed of n-sub graphs,
+        where each sub-graph is the aggregation of all assocaited correspondences.
 
         Parameters
         ----------
-        deepen : bool
-                 Whether or not to attempt to punch through correspondences.  Default: False
-
-        See Also
-        --------
-        autocnet.graph.node.Node
+        clean_keys : list
+                     of strings used to mask the matches on each edge of the
+                     Candidate Graph object
 
         """
-        for i, n in self.nodes_iter(data=True):
-            n.group_correspondences(self, *args, deepen=deepen, **kwargs)
-        self.cn = [n.point_to_correspondence_df for i, n in self.nodes_iter(data=True) if
-                   isinstance(n.point_to_correspondence_df, pd.DataFrame)]
+        return generate_control_network(self)
 
     def island_nodes(self):
         """
@@ -804,6 +809,28 @@ class CandidateGraph(nx.Graph):
            A list of connected sub-graphs of nodes, with the largest sub-graph first. Each subgraph is a set.
         """
         return sorted(nx.connected_components(self), key=len, reverse=True)
+
+    def serials(self):
+        """
+        Create a dictionary of ISIS3 compliant serial numbers for each
+        node in the graph.
+
+        Returns
+        -------
+        serials : dict
+                  with key equal to the node id and value equal to
+                  an ISIS3 compliant serial number or None
+        """
+        serials = {}
+        for i, n in self.nodes_iter(data=True):
+            serials[n['node_id']] = generate_serial_number(n['image_path'])
+        return serials
+
+    def files(self):
+        """
+        Return a list of all full file PATHs in the CandidateGraph
+        """
+        return [d['image_path'] for i, d in self.nodes_iter(data=True)]
 
     def save(self, filename):
         """
@@ -950,36 +977,6 @@ class CandidateGraph(nx.Graph):
         H.graph = self.graph
         return H
 
-    # def nodes_iter(self, data=False):
-    #     s = super(CandidateGraph, self)
-    #     nodes = s.nodes_iter(data)
-    #     ret = []
-    #     for n in nodes:
-    #         if data:
-    #             if n[0] in self.nodemask:
-    #                 ret.append(n)
-    #         else:
-    #             if n in self.nodemask:
-    #                 ret.append(n)
-    #     return iter(ret)
-
-    # def edges_iter(self, nbunch=[], data=False, key=False):
-    #     s = super(CandidateGraph, self)
-    #     if not isinstance(nbunch, list):
-    #         nbunch = [nbunch]
-    #
-    #     if nbunch:
-    #         nbunch = [node for node in nbunch if nbunch not in list(self.nodemask)]
-    #     else:
-    #         nbunch = list(self.nodemask)
-    #
-    #     try:
-    #         return s.edges_iter(nbunch=nbunch, data=data)
-    #     except:
-    #         return s.edges_iter([self.node[node]['image_path'] for node in nbunch], data=data)
-
-
-
     def subgraph_from_matches(self):
         """
         Returns a sub-graph where all edges have matches.
@@ -1088,6 +1085,57 @@ class CandidateGraph(nx.Graph):
 
             edge['weights']['voronoi'] = voronoi_df
 
+    def compute_unique_fully_connected_components(self, size=2):
+        """
+        Compute a list of all cliques with size greater than size.
+
+        Parameters
+        ----------
+        size : int
+               Only cliques larger than size are returned.  Default 2.
+
+        Returns
+        -------
+         : list
+           of lists of node ids
+
+        Examples
+        --------
+        >>> G = CandidateGraph()
+        >>> G.add_edges_from([('A', 'B'), ('A', 'C'), ('B', 'C'), ('B', 'D'), ('A', 'E'), ('A', 'F'), ('E', 'F') ])
+        >>> res = G.compute_unique_fully_connected_components()
+        >>> sorted(map(sorted,res))
+        [['A', 'B', 'C'], ['A', 'E', 'F']]
+        """
+        return [i for i in nx.enumerate_all_cliques(self) if len(i) > size]
+
+    def compute_fully_connected_components(self):
+        """
+        For a given graph, compute all of the fully connected subgraphs with
+        3+ components.
+
+        Returns
+        -------
+        fc : list
+             of lists of node identifiers
+
+        Examples
+        --------
+        >>> G = CandidateGraph()
+        >>> G.add_edges_from([('A', 'B'), ('A', 'C'), ('B', 'C'), ('B', 'D'), ('A', 'E'), ('A', 'F'), ('E', 'F') ])
+        >>> fc = G.compute_fully_connected_components()
+        >>> len(fc) #A, B, C, E, A  - D is omitted because it is a singular terminal node
+        5
+        >>> sorted(map(sorted,fc['A']))  # Sort inner and outer lists
+        [['A', 'B', 'C'], ['A', 'E', 'F']]
+        """
+        fully_connected = self.compute_unique_fully_connected_components()
+        fc = defaultdict(list)
+        for i in fully_connected:
+            for j in i:
+                fc[j].append(tuple(i))
+        return fc
+
     def compute_intersection(self, source, clean_keys=[]):
         """
         Computes the intercetion of all images in a graph
@@ -1163,3 +1211,16 @@ class CandidateGraph(nx.Graph):
     def footprints(self):
         geoms = [n.footprint for i, n in self.nodes_iter(data=True)]
         return gpd.GeoDataFrame(geometry=geoms)
+
+    def create_control_network(self, clean_keys=[]):
+        matches = self.get_matches(clean_keys=clean_keys)
+        self.controlnetwork = control.ControlNetwork.from_candidategraph(matches)
+
+    def identify_potential_overlaps(self, **kwargs):
+        cc = control.identify_potential_overlaps(self, self.controlnetwork, **kwargs)
+        return cc
+
+    def to_isis(self, outname, *args, **kwargs):
+        serials = self.serials()
+        files = self.files()
+        self.controlnetwork.to_isis(outname, serials, files, *args, **kwargs)

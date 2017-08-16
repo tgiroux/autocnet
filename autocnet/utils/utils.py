@@ -8,6 +8,49 @@ import networkx as nx
 
 from osgeo import ogr
 
+def compare_dicts(d, o):
+    """
+    Given two dictionaries, compare them with support for np.ndarray and
+    pd.DataFrame objects
+
+    Parameters
+    ----------
+    d : dict
+        first dict to compare
+
+    o : dict
+        second dict to compare
+
+    Examples
+    --------
+    >>> d = {'a':0}
+    >>> o = {'a':0}
+    >>> compare_dicts(d, o)
+    True
+    >>> d['a'] = 1
+    >>> compare_dicts(d,o)
+    False
+    >>> d['a'] = np.arange(3)
+    >>> o['a'] = np.arange(3)
+    >>> compare_dicts(d,o)
+    True
+    """
+    if o.keys() != d.keys():
+        return False
+    for k, v in d.items():
+        if isinstance(v, pd.DataFrame):
+            if not v.equals(o[k]):
+                return False
+        elif isinstance(v, np.ndarray):
+            if not v.all() == o[k].all():
+                return False
+        else:
+            if k == '_geodata':
+                continue
+            if not v == o[k]:
+                return False
+    return True
+
 def crossform(a):
     """
     Return the cross form, e.g. a in the cross product of a b.
@@ -42,21 +85,14 @@ def normalize_vector(line):
 
     Examples
     --------
-    >>> x = np.random.random((3,3))
+    >>> x = np.array([3, 1, 2])
     >>> normalize_vector(x)
-    array([[ 0.88280225,  0.4697448 ,  0.11460811],
-       [ 0.26090555,  0.96536433,  0.91648305],
-       [ 0.58271501,  0.81267657,  0.30796395]])
+    array([ 0.80178373,  0.26726124,  0.53452248])
     """
     if isinstance(line, pd.DataFrame):
         line = line.values
-    try:
-        n = np.sqrt(line[:, 0]**2 + line[:, 1]**2).reshape(-1, 1)
-    except:
-        n = np.sqrt(line[0]**2 + line[1]**2)
-    line = line / n
-    return line
-
+    n = np.sqrt((line[0]**2 + line[1]**2 + line[2]**2))
+    return line / abs(n)
 
 def getnearest(iterable, value):
     """

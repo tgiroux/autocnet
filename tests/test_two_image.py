@@ -54,7 +54,7 @@ class TestTwoImageMatching(unittest.TestCase):
 
         # Step: Compute the coverage ratios
         for i, node in cg.nodes_iter(data=True):
-            ratio = node.coverage_ratio()
+            ratio = node.coverage()
             self.assertTrue(0.93 < round(ratio, 8) < 0.96)
 
         cg.decompose_and_match(k=2, maxiteration=2)
@@ -69,7 +69,6 @@ class TestTwoImageMatching(unittest.TestCase):
             assert isinstance(err, pd.Series)
             matches, _ = e.clean(clean_keys=['fundamental'])
             assert matches.index.all() == err.index.all()
-                    
 
         # Apply AMNS
         cg.suppress(k=30, suppression_func=error)
@@ -77,15 +76,6 @@ class TestTwoImageMatching(unittest.TestCase):
         # Step: Compute subpixel offsets for candidate points
         cg.subpixel_register(clean_keys=['suppression'], tiled=True)
         cg.subpixel_register(clean_keys=['suppression'])
-        
-
-
-        # Step: And create a C object
-        cg.generate_cnet(clean_keys=['subpixel'])
-
-        # Step: Create a fromlist to go with the cnet and write it to a file
-        filelist = cg.to_filelist()
-        write_filelist(filelist, path="fromlis.lis")
 
     def tearDown(self):
         try:

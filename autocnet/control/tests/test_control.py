@@ -1,97 +1,68 @@
+from unittest.mock import MagicMock
+import geopandas as gpd
+import pandas as pd
+from shapely.geometry import Polygon
+
+
 import os
 import sys
-from time import gmtime, strftime
-import unittest
+sys.path.insert(0, '..')
+from .. import control
 
-from unittest.mock import Mock, MagicMock
+def test_fromcandidategraph(candidategraph, controlnetwork_data):#, controlnetwork):
+    matches = candidategraph.get_matches()
+    cn = control.ControlNetwork.from_candidategraph(matches)
+    assert cn.data.equals(controlnetwork_data)
 
-from autocnet.graph.edge import Edge
-from autocnet.graph.node import Node
+def test_add_measure():
+    cn = control.ControlNetwork()
 
-import numpy as np
-import pandas as pd
+    # Add the point 0 from image 0
+    key = (0,0)
+    cn.add_measure(key, (0,1), 3, [1,1])
+    assert key in cn.measure_to_point.keys()
+    assert cn.measure_to_point[key] == 0
 
-sys.path.insert(0, os.path.abspath('..'))
+    # Add the point 1 from image 2
+    key = (1,2)
+    cn.add_measure(key, (0,1), 2, [1,1])
+    assert key in cn.measure_to_point.keys()
 
-from autocnet.control import control
+    # Add another measure associated with point (0,0)
+    #  Key is the source and this methods is called to add the destination
+    key = (2,1)
+    cn.add_measure(key, (0,2), 3, [1,1], point_id = 0)
+    assert key in cn.measure_to_point.keys()
+    assert cn.measure_to_point[key] == 0
 
+def test_validate_points(controlnetwork):
+    assert controlnetwork.validate_points().any()
 
-class TestC(unittest.TestCase):
+def test_bad_validate_points(bad_controlnetwork):
+    assert bad_controlnetwork.validate_points().iloc[0] == False
+    assert bad_controlnetwork.validate_points().iloc[1:].all()
 
-    @classmethod
-    def setUpClass(cls):
-        npts = 10
-        coords = pd.DataFrame(np.arange(npts * 2).reshape(-1, 2))
-        source = np.zeros(npts)
-        destination = np.ones(npts)
-        pid = np.arange(npts)
+def test_identify_potential_overlaps(controlnetwork, candidategraph):
+    res = control.identify_potential_overlaps(candidategraph,
+                                              controlnetwork,
+                                              overlap=False)
 
-        matches = pd.DataFrame(np.vstack((source, pid, destination, pid)).T, columns=['source_image',
-                                                                                      'source_idx',
-                                                                                      'destination_image',
-                                                                                      'destination_idx'])
+    assert res.equals(pd.Series([(2,), (2,),
+                                 (1,), (1,),
+                                 (0,), (0,)],
+                                 index=[6,7,8,9,10,11]))
 
-        edge = Mock(spec=Edge)
-        edge.source = Mock(spec=Node)
-        edge.destination = Mock(spec=Node)
-        edge.source.isis_serial = None
-        edge.destination.isis_serial = None
-        edge.source.get_keypoint_coordinates = MagicMock(return_value=coords)
-        edge.destination.get_keypoint_coordinates = MagicMock(return_value=coords)
+def test_potential_overlap(controlnetwork, candidategraph):
+    # Patch in an intersection check so that all points intersect all geoms
+    candidategraph.create_node_subgraph = MagicMock(return_value=candidategraph)
+    coords = [(-1., -1.), (-1., 1.), (1., 1.), (1., -1.), (-1., -1.)]
+    poly = gpd.GeoSeries(Polygon(coords))
+    candidategraph.compute_intersection = MagicMock(return_value=(poly, 0))
+    res = control.identify_potential_overlaps(candidategraph,
+                                              controlnetwork,
+                                              overlap=True)
 
-        cls.C = control.CorrespondenceNetwork()
-        cls.C.add_correspondences(edge, matches)
-
-
-    def test_n_point(self):
-        self.assertEqual(self.C.n_points, 10)
-
-    def test_n_measures(self):
-        self.assertEqual(self.C.n_measures, 20)
-
-    def test_modified_date(self):
-        self.assertIsInstance(self.C.modifieddate, str)
-
-    def test_creation_date(self):
-        self.assertEqual(self.C.creationdate, strftime("%Y-%m-%d %H:%M:%S", gmtime()))
-
-    def test_point_subpixel(self):
-        for k, v in self.C.point_to_correspondence.items():
-            self.assertFalse(k.subpixel)
-            k.subpixel = True
-            self.assertTrue(k.subpixel)
-            break
-
-    def test_equalities(self):
-        points = []
-        correspondences = []
-        for k, v in self.C.point_to_correspondence.items():
-            points.append(k)
-            correspondences.extend(v)
-        self.assertEqual(points[0], points[0])
-        self.assertNotEqual(points[-1], points[1])
-        self.assertEqual(correspondences[1][0], correspondences[1][0])
-
-    def test_to_dataframe(self):
-        self.C.to_dataframe()
-
-    def test_point_repr(self):
-        expected = 0
-        p = control.Point(expected)
-        self.assertEqual(str(expected), p.__repr__())
-
-    def test_correspondence_repr(self):
-        expected = 0
-        c = control.Correspondence(expected, 1, 1)
-        self.assertEqual(str(expected), c.__repr__())
-
-    def test_correspondence_eq(self):
-        expected = 0
-        c = control.Correspondence(expected, 1, 1)
-        self.assertTrue(c == expected)
-
-    def test_correspondence_hash(self):
-        expected = 200
-        c = control.Correspondence(expected, 1, 1)
-        self.assertEqual(hash(expected), hash(c))
-
+    assert res.equals(pd.Series([(2,), (2,),
+                                 (1,), (1,),
+                                 (0,), (0,)],
+                                 index=[6,7,8,9,10,11]))
