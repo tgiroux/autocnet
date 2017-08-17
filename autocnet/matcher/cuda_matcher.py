@@ -4,11 +4,11 @@ try:
     import cudasift as cs
 except:
     cs = None
-    
+
 import numpy as np
 import pandas as pd
 
-def match(edge, ratio=0.8, **kwargs):
+def match(edge, aidx=None, bidx=None, **kwargs):
 
     """
     Apply a composite CUDA matcher and ratio check.  If this method is used,
@@ -18,11 +18,11 @@ def match(edge, ratio=0.8, **kwargs):
     without significant gain in accuracy when using this implementation.
     """
 
-    source_kps = edge.source.get_keypoints()
-    source_des = edge.source.descriptors
+    source_kps = edge.source.get_keypoints(index=aidx)
+    source_des = edge.source.descriptors[aidx]
 
-    destin_kps = edge.destination.get_keypoints()
-    destin_des = edge.destination.descriptors
+    destin_kps = edge.destination.get_keypoints(index=bidx)
+    destin_des = edge.destination.descriptors[bidx]
 
     s_siftdata = cs.PySiftData.from_data_frame(source_kps, source_des)
     d_siftdata = cs.PySiftData.from_data_frame(destin_kps, destin_des)
@@ -42,5 +42,4 @@ def match(edge, ratio=0.8, **kwargs):
 
     # Set the matches and set the 'ratio' (ambiguity) mask
     edge.matches = df
-    edge.masks = pd.DataFrame()
     edge.masks['ratio'] = df['ambiguity'] <= ratio

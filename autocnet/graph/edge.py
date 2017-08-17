@@ -48,8 +48,10 @@ class Edge(dict, MutableMapping):
         self.masks = pd.DataFrame()
         self.subpixel_matches = pd.DataFrame()
         self['weights'] = {}
+
         self['source_mbr'] = None
         self['destin_mbr'] = None
+        self['overlap_latlon_coords'] = None
 
     def __repr__(self):
         return """
@@ -76,7 +78,11 @@ class Edge(dict, MutableMapping):
         k : int
             The number of neighbors to find
         """
-        Edge._match(self, k, **kwargs)
+        # Reset the edge masks because matching is happening (again)
+        self.masks = pd.DataFrame()
+        kwargs['aidx'] = self.get_keypoints('source', overlap=True).index
+        kwargs['bidx'] = self.get_keypoints('destination', overlap=True).index
+        Edge._match(self, k=k, **kwargs)
 
     @staticmethod
     def _match(edge, k=2, **kwargs):
@@ -128,7 +134,12 @@ class Edge(dict, MutableMapping):
 
     def ratio_check(self, clean_keys=[], maskname='ratio', **kwargs):
         matches, mask = self.clean(clean_keys)
-        self.masks[maskname] = od.distance_ratio(matches, **kwargs)
+        self.masks[maskname] = self._ratio_check(self, matches, **kwargs)
+
+    @staticmethod
+    def _ratio_check(edge, matches, **kwargs):
+        pass
+        #return.masks[maskname] = od.distance_ratio(matches, **kwargs)
 
     def compute_fundamental_matrix(self, clean_keys=[], maskname='fundamental', **kwargs):
         """
@@ -178,13 +189,10 @@ class Edge(dict, MutableMapping):
         # If we only want keypoints in the overlap
         if overlap:
             # Can't use overlap if we haven't computed MBRs
-            if not (self["source_mbr"] and self["destin_mbr"]):
-                warnings.warn(
-                    "Cannot use overlap constraint, minimum bounding rectangles"
-                    " have not been computed for one or more Nodes")
+            if self['overlap_latlon_coords'] is None:
                 return keypts
             # Create overlap's bounding polygon in pixel space
-            bounds_poly = node.reproject_geom(self.overlap_latlon_coords)
+            bounds_poly = node.reproject_geom(self['overlap_latlon_coords'])
             # Mask for node keypts based on bounding poly
             overlap_mask = cg.geom_mask(node.keypoints, bounds_poly)
             # Return masked keypts
@@ -497,18 +505,31 @@ class Edge(dict, MutableMapping):
         voronoi = cg.vor(self, clean_keys, **kwargs)
         self.matches = pd.concat([self.matches, voronoi[1]['vor_weights']], axis=1)
 
-    def compute_overlap(self, **kwargs):
+    def compute_overlap(self, buffer_dist=0, **kwargs):
         """
         Estimate a source and destination minimum bounding rectangle, in
-        pixel space
+        pixel space.
         """
         try:
-            self.overlap_latlon_coords, self["source_mbr"], self["destin_mbr"] = self.source.geodata.compute_overlap(self.destination.geodata, **kwargs)
-        except Exception as e:
-            raise Exception("Overlap between {} and {} could not be "
-                            "computed: {}".format(self.source['image_name'],
-                                                  self.destination['image_name'],
-                                                  type(e)))
+            self['overlap_latlon_coords'], smbr, dmbr = self.source.geodata.compute_overlap(self.destination.geodata, **kwargs)
+            smbr = list(smbr)
+            dmbr = list(dmbr)
+            for i in range(4):
+                if i % 2:
+                    buf = buffer_dist
+                else:
+                    buf = -buffer_dist
+                smbr[i] += buf
+                dmbr[i] += buf
+        except:
+            smbr = self.source.geodata.xy_extent
+            dmbr = self.source.geodata.xy_extent
+            warnings.warn("Overlap between {} and {} could not be "
+                            "computed.  Using the full image extents".format(self.source['image_name'],
+                                                  self.destination['image_name']))
+
+        self['source_mbr'] = smbr
+        self['destin_mbr'] = dmbr
 
     def get_matches(self): # pragma: no cover
         if self.matches.empty:
