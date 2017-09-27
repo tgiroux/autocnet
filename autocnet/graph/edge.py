@@ -318,6 +318,7 @@ class Edge(dict, MutableMapping):
 
         source_image = (matches.iloc[0]['source_image'])
 
+        pts = []
         # for each edge, calculate this for each keypoint pair
         for i, (idx, row) in enumerate(matches.iterrows()):
             s_idx = int(row['source_idx'])
@@ -329,9 +330,12 @@ class Edge(dict, MutableMapping):
             # Get the template and search window
             s_template = sp.clip_roi(s_img, s_keypoint, template_size)
             d_search = sp.clip_roi(d_img, d_keypoint, search_size)
+            if 0 in s_template.shape or 0 in d_search.shape:
+                continue
             try:
-                x_offset, y_offset, strength = sp.subpixel_offset(s_template, d_search, **kwargs)
+                (x_offset, y_offset, strength),ref = sp.subpixel_offset(s_template, d_search, **kwargs)
                 self.subpixel_matches.loc[idx, ('x_offset', 'y_offset', 'correlation', 'reference')]= [x_offset, y_offset, strength, source_image]
+                pts.append([s_template, d_search, ref, x_offset, y_offset])
             except:
                 warnings.warn('Template-Search size mismatch, failing for this correspondence point.')
 
@@ -349,6 +353,7 @@ class Edge(dict, MutableMapping):
         self.masks['shift'] = shift_mask
         self.masks['threshold'] = threshold_mask
         self.masks['subpixel'] = mask
+        return pts
 
     def suppress(self, suppression_func=spf.correlation, clean_keys=[], maskname='suppression', **kwargs):
         """
@@ -521,6 +526,7 @@ class Edge(dict, MutableMapping):
                     buf = -buffer_dist
                 smbr[i] += buf
                 dmbr[i] += buf
+
         except:
             smbr = self.source.geodata.xy_extent
             dmbr = self.source.geodata.xy_extent
@@ -531,11 +537,11 @@ class Edge(dict, MutableMapping):
         self['source_mbr'] = smbr
         self['destin_mbr'] = dmbr
 
-    def get_matches(self): # pragma: no cover
+    def get_matches(self, clean_keys=[]): # pragma: no cover
         if self.matches.empty:
             return pd.DataFrame()
 
-        match, _ = self.clean(clean_keys=list(self.masks.columns))
+        match, _ = self.clean(clean_keys=clean_keys)
         match = match[['source_image', 'source_idx',
                        'destination_image', 'destination_idx']]
         skps = self.get_keypoints('source', index=match.source_idx)
@@ -544,5 +550,4 @@ class Edge(dict, MutableMapping):
         dkps.columns = ['destination_x', 'destination_y']
         match = match.join(skps, on='source_idx')
         match = match.join(dkps, on='destination_idx')
-        matches.append(match)
-        return matches
+        return match

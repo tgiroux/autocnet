@@ -1,3 +1,4 @@
+import warnings
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -6,6 +7,7 @@ from shapely.geometry import Point
 
 from plio.io.io_controlnetwork import to_isis, write_filelist
 
+print('reload')
 
 def identify_potential_overlaps(cg, cn, overlap=True):
     """
@@ -94,7 +96,7 @@ def deepen_correspondences(cg, cn):
     pass
 
 class ControlNetwork(object):
-    measures_keys = ['point_id', 'image_index', 'keypoint_index', 'edge', 'match_idx', 'x', 'y']
+    measures_keys = ['point_id', 'image_index', 'keypoint_index', 'edge', 'match_idx', 'x', 'y', 'x_off', 'y_off', 'corr', 'valid']
 
     def __init__(self):
         self._point_id = 0
@@ -150,8 +152,13 @@ class ControlNetwork(object):
         # The node_id is a composite key (image_id, correspondence_id), so just grab the image
         image_id = key[0]
         match_id = key[1]
-        self.data.loc[self._measure_id] = [point_id, image_id, match_id, edge, match_idx, *fields]
+        self.data.loc[self._measure_id] = [point_id, image_id, match_id, edge, match_idx, *fields, 0, 0, np.inf, True]
         self._measure_id += 1
+
+    def remove_measure(self, idx):
+        self.data = self.data.drop(self.data.index[idx])
+        for r in idx:
+            self.measure_to_point.pop(r, None)
 
     def validate_points(self):
         """
@@ -168,13 +175,20 @@ class ControlNetwork(object):
         """
 
         def func(g):
-            print(g)
             # One and only one measure constraint
-            if not g.image_index.duplicated().any():
+            if g.image_index.duplicated().any():
                 return True
             else: return False
 
         return self.data.groupby('point_id').apply(func)
+
+    def clean_singles(self):
+        """
+        Take the `data` dataframe and return only those points with
+        at least two measures.  This is automatically called before writing
+        as functions such as subpixel matching can result in orphaned measures.
+        """
+        return self.data.groupby('point_id').apply(lambda g: g if len(g) > 1 else None)
 
     def to_isis(self, outname, serials, olist, *args, **kwargs): #pragma: no cover
         """
@@ -185,8 +199,17 @@ class ControlNetwork(object):
             warnings.warn('Control Network is not ISIS3 compliant.  Please run the validate_points method on the control network.')
             return
 
-        to_isis(outname + '.net', self.data, serials, *args, **kwargs)
+        # Apply the subpixel shift
+        self.data.x += self.data.x_off
+        self.data.y += self.data.y_off
+
+        to_isis(outname + '.net', self.data.query('valid == True'),
+                serials, *args, **kwargs)
         write_filelist(olist, outname + '.lis')
+
+        # Back out the subpixel shift
+        self.data.x -= self.data.x_off
+        self.data.y -= self.data.y_off
 
     def to_bal(self):
         """
