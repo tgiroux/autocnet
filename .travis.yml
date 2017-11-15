@@ -1,3 +1,4 @@
+language: generic  # Since we use conda, just go generic
 sudo: false
 
 branches:
@@ -7,8 +8,6 @@ only:
 env:
   global:
     - BINSTAR_USER: jlaura
-  matrix:
-    - PYTHON_VERSION: 3.5
 
 os:
   - linux
@@ -18,15 +17,9 @@ install:
   # We do this conditionally because it saves us some downloading if the
   # version is the same.
   - if [ "$TRAVIS_OS_NAME" == "linux" ]; then
-      if [ "$PYTHON_VERSION" == 2.7 ]; then
-        wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh -O miniconda.sh;
-      else
         wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
       fi
     else
-      if ["$PYTHON_VERSION" == 2.7]; then
-        curl -o miniconda.sh  https://repo.continuum.io/miniconda/Miniconda-latest-MacOSX-x86_64.sh;
-      else
         curl -o miniconda.sh  https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh;
       fi
     fi
@@ -43,7 +36,6 @@ install:
   - conda config --add channels menpo
   - conda config --add channels jlaura
   - conda config --set ssl_verify false
-  - conda install python=$PYTHON_VERSION
   - conda install -c conda-forge numpy opencv
   - conda install -c jlaura plio
   - conda install -c conda-forge vlfeat
