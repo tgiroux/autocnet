@@ -188,15 +188,15 @@ class Edge(dict, MutableMapping):
         keypts = node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
         # If we only want keypoints in the overlap
         if overlap:
+            if self.source == node:
+                mbr = self['source_mbr']
+            else:
+                mbr = self['destin_mbr']
             # Can't use overlap if we haven't computed MBRs
-            if self['overlap_latlon_coords'] is None:
+            print(mbr)
+            if mbr is None:
                 return keypts
-            # Create overlap's bounding polygon in pixel space
-            bounds_poly = node.reproject_geom(self['overlap_latlon_coords'])
-            # Mask for node keypts based on bounding poly
-            overlap_mask = cg.geom_mask(node.keypoints, bounds_poly)
-            # Return masked keypts
-            return keypts[overlap_mask]
+            return keypts.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*mbr))
         return keypts
 
     @get_keypoints.register(str)
@@ -515,25 +515,30 @@ class Edge(dict, MutableMapping):
         Estimate a source and destination minimum bounding rectangle, in
         pixel space.
         """
-        try:
-            self['overlap_latlon_coords'], smbr, dmbr = self.source.geodata.compute_overlap(self.destination.geodata, **kwargs)
-            smbr = list(smbr)
-            dmbr = list(dmbr)
-            for i in range(4):
-                if i % 2:
-                    buf = buffer_dist
-                else:
-                    buf = -buffer_dist
-                smbr[i] += buf
-                dmbr[i] += buf
+        if isinstance(self.source.geodata, (int, float)):
+            smbr = None
+            dmbr = None
+        else:
+            try:
+                self['overlap_latlon_coords'], smbr, dmbr = self.source.geodata.compute_overlap(self.destination.geodata, **kwargs)
+                smbr = list(smbr)
+                dmbr = list(dmbr)
+                for i in range(4):
+                    if i % 2:
+                        buf = buffer_dist
+                    else:
+                        buf = -buffer_dist
+                    smbr[i] += buf
+                    dmbr[i] += buf
 
-        except:
-            smbr = self.source.geodata.xy_extent
-            dmbr = self.source.geodata.xy_extent
-            warnings.warn("Overlap between {} and {} could not be "
-                            "computed.  Using the full image extents".format(self.source['image_name'],
-                                                  self.destination['image_name']))
-
+            except:
+                smbr = self.source.geodata.xy_extent
+                dmbr = self.source.geodata.xy_extent
+                warnings.warn("Overlap between {} and {} could not be "
+                                "computed.  Using the full image extents".format(self.source['image_name'],
+                                                      self.destination['image_name']))
+                smbr = [smbr[0][0], smbr[1][0], smbr[0][1], smbr[1][1]]
+                dmbr = [dmbr[0][0], dmbr[1][0], dmbr[0][1], dmbr[1][1]]
         self['source_mbr'] = smbr
         self['destin_mbr'] = dmbr
 

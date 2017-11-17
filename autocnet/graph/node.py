@@ -114,8 +114,11 @@ class Node(dict, MutableMapping):
     @property
     def geodata(self):
         if not getattr(self, '_geodata', None) and self['image_path'] is not None:
-            self._geodata = GeoDataset(self['image_path'])
-            return self._geodata
+            try:
+                self._geodata = GeoDataset(self['image_path'])
+                return self._geodata
+            except:
+                return self['node_id']
         if hasattr(self, '_geodata'):
             return self._geodata
         else:
