@@ -5,6 +5,7 @@ try:
 except:
     cv2 = None
 
+
 def compute_epipoles(f):
     """
     Compute the epipole and epipolar prime
@@ -27,7 +28,6 @@ def compute_epipoles(f):
     e1 = crossform(e)
 
     return e, e1
-
 
 def idealized_camera():
     """

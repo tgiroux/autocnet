@@ -88,6 +88,7 @@ class CandidateGraph(nx.Graph):
 
         self.graph['creationdate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
         self.graph['modifieddate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
+        self.compute_overlaps()
 
     def __eq__(self, other):
         # Check the nodes
@@ -245,7 +246,7 @@ class CandidateGraph(nx.Graph):
             match = match.join(dkps, on='destination_idx')
             matches.append(match)
         return matches
-        
+
     def add_image(self, image_name, adjacency=None, basepath=None, apply_func=None):
         """
         Adds an image node to the graph.

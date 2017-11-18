@@ -314,6 +314,7 @@ def test_minimum_spanning_tree():
                  "7": ["2"]}
 
     graph = network.CandidateGraph.from_adjacency(test_dict)
+    print(graph)
     mst_graph = graph.minimum_spanning_tree()
 
     assert sorted(mst_graph.nodes()) == sorted(graph.nodes())
