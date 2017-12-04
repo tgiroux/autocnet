@@ -43,7 +43,7 @@ class TestThreeImageMatching(unittest.TestCase):
 
         # Step: Extract image data and attribute nodes
         cg.extract_features(extractor_parameters={'nfeatures':500})
-        for i, node, in cg.nodes_iter(data=True):
+        for i, node, in cg.nodes.data('data'):
             self.assertIn(node.nkeypoints, range(490, 511))
 
         cg.match(k=2)

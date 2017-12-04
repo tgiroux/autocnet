@@ -30,7 +30,7 @@ def candidategraph():
                           [True, False]],
                           columns=['rain', 'maker'])
 
-    for s, d, e in cg.edges_iter(data=True):
+    for s, d, e in cg.edges.data('data'):
         e['fundamental_matrix'] = np.random.random(size=(3,3))
         e.matches = matches
         e.masks = masks

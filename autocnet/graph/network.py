@@ -735,7 +735,6 @@ class CandidateGraph(nx.Graph):
         """
         filelist = []
         for i, node in self.nodes.data('data'):
-            print(type(node), node['image_path'])
             filelist.append(node['image_path'])
         return filelist
 
@@ -1151,8 +1150,6 @@ class CandidateGraph(nx.Graph):
         Checks if the graph is a complete graph
         """
         neighbors = nx.degree(self)
-        print(neighbors)
-        print(self.nodes)
         for edge in neighbors:
             if edge == len(self.neighbors(self.nodes)):
                 continue

@@ -186,14 +186,11 @@ class Edge(dict, MutableMapping):
             raise TypeError
         keypts = node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
         # If we only want keypoints in the overlap
-        print('O', overlap)
         if overlap:
             if self.source == node:
                 mbr = self['source_mbr']
-                print('s', mbr)
             else:
                 mbr = self['destin_mbr']
-                print('d', mbr)
             # Can't use overlap if we haven't computed MBRs
             if mbr is None:
                 return keypts
