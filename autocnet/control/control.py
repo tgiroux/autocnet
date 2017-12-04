@@ -82,7 +82,7 @@ def identify_potential_overlaps(cg, cn, overlap=True):
         # Determine whether a 'real' lat/lon are to be used and reproject
         if overlap:
             row = p.iloc[0]
-            lat, lon = cg.node[row.image_index].geodata.pixel_to_latlon(row.x, row.y)
+            lat, lon = cg.node[row.image_index]['data'].geodata.pixel_to_latlon(row.x, row.y)
         else:
             lat, lon = 0,0
 
@@ -178,6 +178,7 @@ class ControlNetwork(object):
         # The node_id is a composite key (image_id, correspondence_id), so just grab the image
         image_id = key[0]
         match_id = key[1]
+        print(self.data.columns)
         self.data.loc[self._measure_id] = [point_id, image_id, match_id, edge, match_idx, *fields, 0, 0, np.inf, True]
         self._measure_id += 1
 
