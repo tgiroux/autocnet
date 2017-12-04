@@ -115,8 +115,8 @@ def load(projectname):
                 n.masks = pd.DataFrame(nzf['masks'], index=nzf['masks_idx'], columns=nzf['masks_columns'])
             except:
                 pass  # The node does not have features to load.
-            cg.add_node(d['node_id'])
-            cg.node[d['node_id']] = n
+            cg.add_node(d['node_id'], data=n)
+
 
         for e in data['links']:
             cg.add_edge(e['source'], e['target'])
@@ -136,7 +136,7 @@ def load(projectname):
             except:
                 pass
             # Add a mock edge
-            cg.edge[e['source']][e['target']] = edge
+            cg.add_edge(e['source'], e['target'] ,data=edge)
 
         cg._order_adjacency
     return cg
