@@ -43,7 +43,7 @@ class TestThreeImageMatching(unittest.TestCase):
 
         # Step: Extract image data and attribute nodes
         cg.extract_features(extractor_parameters={'nfeatures':500})
-        for i, node, in cg.nodes.data('data'):
+        for i, node, in cg.nodes_iter(data=True):
             self.assertIn(node.nkeypoints, range(490, 511))
 
         cg.match(k=2)
@@ -51,6 +51,8 @@ class TestThreeImageMatching(unittest.TestCase):
         cg.ratio_checks()
 
         cg.apply_func_to_edges("compute_homography", clean_keys=['symmetry', 'ratio'])
+        for s, d, e in cg.edges_iter(data=True):
+            self.assertTrue('homography' in e.keys())
         cg.compute_fundamental_matrices(clean_keys=['symmetry', 'ratio'], reproj_threshold=3.0, method='ransac')
 
     def tearDown(self):

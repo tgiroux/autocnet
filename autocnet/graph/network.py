@@ -1175,6 +1175,20 @@ class CandidateGraph(nx.Graph):
         files = self.files()
         self.controlnetwork.to_isis(outname, serials, files, *args, **kwargs)
 
+    def nodes_iter(self, data=False):
+        for i, n in self.nodes.data('data'):
+            if data:
+                yield i, n
+            else:
+                yield i
+
+    def edges_iter(self, data=False):
+        for s, d, e in self.edges.data('data'):
+            if data:
+                yield s, d, e
+            else:
+                yield s, d
+
 class SubCandidateGraph(nx.graphviews.SubGraph, CandidateGraph):
     def __init__(self, *args, **kwargs):
         super(SubCandidateGraph, self).__init__(*args, **kwargs)
