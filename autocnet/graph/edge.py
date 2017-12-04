@@ -118,11 +118,9 @@ class Edge(dict, MutableMapping):
                 "Cannot use overlap constraint, minimum bounding rectangles"
                 " have not been computed for one or more Nodes")
             return
-
         # Get overlapping keypts
         s_idx = self.get_keypoints(self.source, overlap=True).index
         d_idx = self.get_keypoints(self.destination, overlap=True).index
-
         # Create a mask from matches whose rows have both source idx &
         # dest idx in the overlapping keypts
         mask = pd.Series(False, index=self.matches.index)
@@ -188,11 +186,14 @@ class Edge(dict, MutableMapping):
             raise TypeError
         keypts = node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
         # If we only want keypoints in the overlap
+        print('O', overlap)
         if overlap:
             if self.source == node:
                 mbr = self['source_mbr']
+                print('s', mbr)
             else:
                 mbr = self['destin_mbr']
+                print('d', mbr)
             # Can't use overlap if we haven't computed MBRs
             if mbr is None:
                 return keypts
