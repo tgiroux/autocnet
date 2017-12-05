@@ -12,9 +12,8 @@ env:
 os:
   - linux
   - osx
-  
+
 env:
-  - PYTHON_VERSION=3.4
   - PYTHON_VERSION=3.5
   - PYTHON_VERSION=3.6
 
@@ -45,7 +44,7 @@ before_install:
   - conda install -c conda-forge vlfeat
   - conda install -c menpo cyvlfeat
   - pip install pillow pysal
-  - conda install -c conda-forge scipy networkx numexpr dill cython pyyaml matplotlib runipy geopandas opencv numpy
+  - conda install -c conda-forge scipy networkx numexpr dill cython pyyaml matplotlib runipy geopandas opencv numpy gdal
   - conda install -c usgs-astrogeology plio
 
   # Development installation
@@ -58,7 +57,7 @@ script:
 after_success:
   - coveralls
   # Need to do the build in the root
-  - source deactivate 
+  - source deactivate
   - conda install conda-build anaconda-client
   - conda config --set anaconda_upload yes
   - conda build --token $CONDA_UPLOAD_TOKEN --python $PYTHON_VERSION recipe
