@@ -448,14 +448,14 @@ def test_update_data(graph):
    ntime = graph.graph['modifieddate']
    assert ctime != ntime
 
-"""def test_is_complete(graph):
+def test_is_complete(graph):
     # Create a small incomplete graph with three nodes and two edges
     incomplete_graph = network.CandidateGraph()
     incomplete_graph.add_nodes_from([1, 2, 3])
     incomplete_graph.add_edges_from([(1, 2), (2, 3)])
 
     assert False == incomplete_graph.is_complete()
-    assert True == graph.is_complete()"""
+    assert True == graph.is_complete()
 
 def test_get_matches(candidategraph):
     matches = candidategraph.get_matches()

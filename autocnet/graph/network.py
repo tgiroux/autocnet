@@ -882,28 +882,6 @@ class CandidateGraph(nx.Graph):
             A networkx subgraph object
         """
         return self.edge_subgraph(edges)
-        H = self.__class__()
-        adj = self.adj
-        # Filter out edges that don't correspond to nodes in the graph.
-        edges = ((u, v) for u, v in edges if u in adj and v in adj[u])
-        for u, v in edges:
-            # Copy the node attributes if they haven't been copied
-            # already.
-            if u not in H.node:
-                H.node[u] = self.node[u]
-            if v not in H.node:
-                H.node[v] = self.node[v]
-            # Create an entry in the adjacency dictionary for the
-            # nodes u and v if they don't exist yet.
-            if u not in H.adj:
-                H.adj[u] = H.adjlist_dict_factory()
-            if v not in H.adj:
-                H.adj[v] = H.adjlist_dict_factory()
-            # Copy the edge attributes.
-            H.edge[u][v] = self.edge[u][v]
-            # H.edge[v][u] = self.edge[v][u]
-        H.graph = self.graph
-        return H
 
     def size(self, weight=None):
         """
@@ -1149,13 +1127,10 @@ class CandidateGraph(nx.Graph):
         """
         Checks if the graph is a complete graph
         """
-        neighbors = nx.degree(self)
-        for edge in neighbors:
-            if edge == len(self.neighbors(self.nodes)):
-                continue
-            else:
+        nneighbors = len(self) - 1
+        for n in self.nodes:
+            if self.degree(n) != nneighbors:
                 return False
-
         return True
 
     def footprints(self):
