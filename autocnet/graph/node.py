@@ -81,7 +81,7 @@ class Node(dict, MutableMapping):
                    self.nkeypoints, self.masks, self.__class__)
 
     def __hash__(self): #pragma: no cover
-        return hash(repr(self))
+        return hash(self['node_id'])
 
     def __gt__(self, other):
         myid = self['node_id']
@@ -107,9 +107,18 @@ class Node(dict, MutableMapping):
         return str(self['node_id'])
 
     def __eq__(self, other):
-        return utils.compare_dicts(self.__dict__, other.__dict__) *\
-               utils.compare_dicts(self, other)
+        return self['node_id'] == other
 
+    @classmethod
+    def create(cls, image_name, node_id, basepath=None):
+        try:
+            image_name = os.path.basename(image_name)
+        except: pass  # Use the input name even if not a valid PATH
+        if basepath is not None:
+            image_path = os.path.join(basepath, image_name)
+        else:
+            image_path = image_name
+        return cls(image_name, image_path, node_id)
 
     @property
     def geodata(self):

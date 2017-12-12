@@ -82,7 +82,7 @@ def identify_potential_overlaps(cg, cn, overlap=True):
         # Determine whether a 'real' lat/lon are to be used and reproject
         if overlap:
             row = p.iloc[0]
-            lat, lon = cg.node[row.image_index].geodata.pixel_to_latlon(row.x, row.y)
+            lat, lon = cg.node[row.image_index]['data'].geodata.pixel_to_latlon(row.x, row.y)
         else:
             lat, lon = 0,0
 

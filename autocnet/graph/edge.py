@@ -19,6 +19,7 @@ from autocnet.transformation import homography as hm
 from autocnet.vis.graph_view import plot_edge, plot_node, plot_edge_decomposition
 from autocnet.cg import cg
 
+from plio.io.io_gdal import GeoDataset
 
 
 class Edge(dict, MutableMapping):
@@ -117,11 +118,9 @@ class Edge(dict, MutableMapping):
                 "Cannot use overlap constraint, minimum bounding rectangles"
                 " have not been computed for one or more Nodes")
             return
-
         # Get overlapping keypts
         s_idx = self.get_keypoints(self.source, overlap=True).index
         d_idx = self.get_keypoints(self.destination, overlap=True).index
-
         # Create a mask from matches whose rows have both source idx &
         # dest idx in the overlapping keypts
         mask = pd.Series(False, index=self.matches.index)
@@ -193,7 +192,6 @@ class Edge(dict, MutableMapping):
             else:
                 mbr = self['destin_mbr']
             # Can't use overlap if we haven't computed MBRs
-            print(mbr)
             if mbr is None:
                 return keypts
             return keypts.query('x >= {} and x <= {} and y >= {} and y <= {}'.format(*mbr))
@@ -515,7 +513,7 @@ class Edge(dict, MutableMapping):
         Estimate a source and destination minimum bounding rectangle, in
         pixel space.
         """
-        if isinstance(self.source.geodata, (int, float)):
+        if not isinstance(self.source.geodata, GeoDataset):
             smbr = None
             dmbr = None
         else:
