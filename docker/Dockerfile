@@ -10,9 +10,7 @@ RUN apt-get install -y libgl1-mesa-glx
 
 # Anaconda environment
 ADD environment.yml /root
-RUN conda install -y python=3.5.4
 RUN conda env update -f environment.yml
-RUN pip install pytest pytest-coverage
 
 # Clone source
 RUN git clone https://github.com/USGS-Astrogeology/autocnet.git
