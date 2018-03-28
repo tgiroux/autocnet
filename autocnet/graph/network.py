@@ -26,7 +26,6 @@ from autocnet.io import network as io_network
 from autocnet.vis.graph_view import plot_graph, cluster_plot
 from autocnet.control import control
 
-
 # The total number of pixels squared that can fit into the keys number of GB of RAM for SIFT.
 MAXSIZE = {0: None,
            2: 6250,
@@ -55,7 +54,11 @@ class CandidateGraph(nx.Graph):
          A control network object instantiated by calling generate_cnet.
     ----------
     """
-    def __init__(self, *args, basepath=None, **kwargs):
+
+    node_factory = Node
+    edge_factory = Edge
+
+    def __init__(self, *args, basepath=None, node_id_map=None, overlaps=False, **kwargs):
         super(CandidateGraph, self).__init__(*args, **kwargs)
 
         self.graph['creationdate'] = strftime("%Y-%m-%d %H:%M:%S", gmtime())
@@ -67,22 +70,29 @@ class CandidateGraph(nx.Graph):
                 image_path = os.path.join(basepath, i)
             else:
                 image_path = i
-            n['data'] = Node(image_name=i, image_path=image_path, node_id = self.graph['node_counter'])
 
-            self.graph['node_name_map'][i] = self.graph['node_counter']
-            self.graph['node_counter'] += 1
+            if node_id_map:
+                node_id = node_id_map[image_path]
+            else:
+                node_id = self.graph['node_counter']
+                self.graph['node_counter'] += 1
+
+            n['data'] = self.node_factory(image_name=i, image_path=image_path, node_id=node_id)
+
+            self.graph['node_name_map'][i] = node_id
 
         # Relabel the nodes in place to use integer node ids
         nx.relabel_nodes(self, self.graph['node_name_map'], copy=False)
         for s, d, e in self.edges(data=True):
             if s > d:
                 s,d = d,s
-            edge = Edge(self.nodes[s]['data'],self.nodes[d]['data'])
+            edge = self.edge_factory(self.nodes[s]['data'],self.nodes[d]['data'])
             # Unidrected graph - both representation point at the same data
             self.edges[s,d]['data'] = edge
             self.edges[d,s]['data'] = edge
 
-        self.compute_overlaps()
+        if overlaps:
+            self.compute_overlaps()
 
     def __eq__(self, other):
         # Check the nodes
@@ -166,7 +176,7 @@ class CandidateGraph(nx.Graph):
         return cls.from_adjacency(adjacency_dict)
 
     @classmethod
-    def from_adjacency(cls, input_adjacency, basepath=None):
+    def from_adjacency(cls, input_adjacency, node_id_map=None, basepath=None, **kwargs):
         """
         Instantiate the class using an adjacency dict or file. The input must contain relative or
         absolute paths to image files.
@@ -191,7 +201,7 @@ class CandidateGraph(nx.Graph):
         """
         if not isinstance(input_adjacency, dict):
             input_adjacency = io_json.read_json(input_adjacency)
-        return cls(input_adjacency, basepath=basepath)
+        return cls(input_adjacency, basepath=basepath, node_id_map=node_id_map, **kwargs)
 
     @classmethod
     def from_save(cls, input_file):
@@ -343,7 +353,7 @@ class CandidateGraph(nx.Graph):
             node.extract_features_with_downsampling(downsample_amount, *args, **kwargs)
 
     def extract_features_with_tiling(self, tilesize=1000, overlap=500, *args, **kwargs): #pragma: no cover
-        for node in self.nodes:
+        for i, node in self.nodes(data='data'):
             print('Processing {}'.format(node['image_name']))
             node.extract_features_with_tiling(tilesize=tilesize, overlap=overlap, *args, **kwargs)
 
@@ -1043,8 +1053,13 @@ class CandidateGraph(nx.Graph):
         return True
 
     def footprints(self):
-        geoms = [node.footprint for i, node in self.nodes.data('data')]
-        return gpd.GeoDataFrame(geometry=geoms)
+        geoms = []
+        names = []
+        for i, node in self.nodes.data('data'):
+            geoms.append(node.footprint)
+            names.append(node['image_name'])
+
+        return gpd.GeoDataFrame(names, geometry=geoms)
 
     def create_control_network(self, clean_keys=[]):
         matches = self.get_matches(clean_keys=clean_keys)

@@ -6,9 +6,11 @@ from plio.io import io_hdf
 
 from autocnet.utils import utils
 
-def from_hdf(in_path, key=None):
+def from_hdf(in_path, index=None, keypoints=True, descriptors=True):
     """
-    For a given node, load the keypoints and descriptors from a hdf5 file.
+    For a given node, load the keypoints and descriptors from a hdf5 file. The
+    keypoints and descriptors kwargs support returning only keypoints or descriptors.
+    The index kwarg supports returning a subset of the data.
 
     Parameters
     ----------
@@ -18,6 +20,16 @@ def from_hdf(in_path, key=None):
     key : str
           An optional path into the HDF5.  For example key='image_name', will
           search /image_name/descriptors for the descriptors.
+
+    index : iterable
+            an h5py accepted indexer to pull only a subset of the keypoints
+            off disk. Default is None to pull all keypoints.
+
+    keypoints : bool
+                if True (default) return the keypoints
+
+    descriptors : bool
+                  if True (default) return the descriptors
 
     Returns
     -------
@@ -32,15 +44,31 @@ def from_hdf(in_path, key=None):
     else:
         hdf = in_path
 
-    if key:
-        outd = '{}/descriptors'.format(key)
-        outk = '{}/keypoints'.format(key)
-    else:
-        outd = '/descriptors'
-        outk = '/keypoints'
+    outd = '/descriptors'
+    outk = '/keypoints'
 
-    descriptors = hdf[outd][:]
-    raw_kps = hdf[outk][:]
+
+    if index is not None:
+        index=np.asarray(index)
+
+        # The indices into HDF have to be sorted lists. When indices get passed in
+        # they are frequently ordered, so this pulls the data using the sorted
+        # index and then reorders the data.
+        i = np.argsort(index)
+        ii = np.argsort(i)
+        # Is is important to use sorted() so that an in-place sort is NOT used.
+        if descriptors:
+            desc = hdf[outd][index[i].tolist()]
+            desc = desc[ii]
+        if keypoints:
+            raw_kps = hdf[outk][index[i].tolist()]
+            raw_kps = raw_kps[ii]
+    else:
+        # Unlike numpy hdf does not handle NoneType as a proxy for `:`
+        if descriptors:
+            desc = hdf[outd][:]
+        if keypoints:
+            raw_kps = hdf[outk][:]
     index = raw_kps['index']
     clean_kps = utils.remove_field_name(raw_kps, 'index')
     columns = clean_kps.dtype.names
@@ -50,7 +78,12 @@ def from_hdf(in_path, key=None):
     if isinstance(in_path, str):
         hdf = None
 
-    return allkps, descriptors
+    if keypoints and descriptors:
+        return allkps, desc
+    elif keypoints:
+        return allkps
+    else:
+        return desc
 
 
 def to_hdf(keypoints, descriptors, out_path, key=None):
@@ -75,21 +108,12 @@ def to_hdf(keypoints, descriptors, out_path, key=None):
     """
     # If the out_path is a string, access the HDF5 file
     if isinstance(out_path, str):
-        if os.path.exists(out_path):
-            mode = 'a'
-        else:
-            mode = 'w'
-        hdf = io_hdf.HDFDataset(out_path, mode=mode)
+        hdf = io_hdf.HDFDataset(out_path, mode='w')
     else:
         hdf = out_path
 
-    #try:
-    if key:
-        outd = '{}/descriptors'.format(key)
-        outk = '{}/keypoints'.format(key)
-    else:
-        outd = '/descriptors'
-        outk = '/keypoints'
+    outd = '/descriptors'
+    outk = '/keypoints'
     hdf.create_dataset(outd,
                        data=descriptors,
                        compression=io_hdf.DEFAULT_COMPRESSION,
@@ -105,7 +129,7 @@ def to_hdf(keypoints, descriptors, out_path, key=None):
     # and close the hdf file gracefully.  If an object, let the instantiator of the
     # object close the file
     if isinstance(out_path, str):
-        hdf = None
+        del hdf
 
 def from_npy(in_path):
     """

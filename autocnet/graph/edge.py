@@ -45,11 +45,11 @@ class Edge(dict, MutableMapping):
         self.destination = destination
         self['homography'] = None
         self['fundamental_matrix'] = None
-        self.matches = pd.DataFrame()
         self.masks = pd.DataFrame()
         self.subpixel_matches = pd.DataFrame()
+        self._matches = pd.DataFrame()
         self['weights'] = {}
-
+        
         self['source_mbr'] = None
         self['destin_mbr'] = None
         self['overlap_latlon_coords'] = None
@@ -65,6 +65,19 @@ class Edge(dict, MutableMapping):
         return utils.compare_dicts(self.__dict__, other.__dict__) *\
                utils.compare_dicts(self, other)
 
+    @property
+    def matches(self):
+        if not hasattr(self, '_matches'):
+            self._matches = pd.DataFrame()
+        return self._matches
+
+    @matches.setter
+    def matches(self, value):
+        if isinstance(value, pd.DataFrame):
+            self._matches = value
+        else:
+            raise(TypeError)
+            
     def match(self, k=2, **kwargs):
 
         """
@@ -170,7 +183,7 @@ class Edge(dict, MutableMapping):
         # Replace the index with the matches index.
         s_keypoints.index = matches.index
         d_keypoints.index = matches.index
-
+        
         self['fundamental_matrix'], fmask = fm.compute_fundamental_matrix(s_keypoints, d_keypoints, **kwargs)
 
         if isinstance(self['fundamental_matrix'], np.ndarray):

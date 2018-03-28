@@ -298,15 +298,14 @@ class Node(dict, MutableMapping):
 
         keypoints, descriptors = Node._extract_features(array, *args, **kwargs)
         count = len(self.keypoints)
-
+        # If this is a tile, push the keypoints to the correct start xy
         if xystart:
             keypoints['x'] += xystart[0]
             keypoints['y'] += xystart[1]
 
         self.keypoints = pd.concat((self.keypoints, keypoints))
-        descriptor_mask = self.keypoints.duplicated()[count:]
-        number_new = descriptor_mask.sum()
-
+        descriptor_mask = self.keypoints[count:].duplicated()
+        number_new = len(descriptor_mask) - descriptor_mask.sum()
         # Removed duplicated and re-index the merged keypoints
         self.keypoints.drop_duplicates(inplace=True)
         self.keypoints.reset_index(inplace=True, drop=True)
@@ -315,6 +314,8 @@ class Node(dict, MutableMapping):
             self.descriptors = np.concatenate((self.descriptors, descriptors[~descriptor_mask]))
         else:
             self.descriptors = descriptors
+        #self.descriptors = descriptors
+        assert count + number_new == len(self.descriptors)
 
     def extract_features_from_overlaps(self, overlaps=[], downsampling=False, tiling=False, *args, **kwargs):
         # iterate through the overlaps
@@ -346,42 +347,13 @@ class Node(dict, MutableMapping):
 
     def extract_features_with_tiling(self, tilesize=1000, overlap=500, *args, **kwargs):
         array_size = self.geodata.raster_size
-        stepsize = tilesize - overlap
-        if stepsize < 0:
-            raise ValueError('Overlap can not be greater than tilesize.')
-        # Compute the tiles
-        if tilesize >= array_size[1]:
-            ytiles = [(0, array_size[1])]
-        else:
-            ystarts = range(0, array_size[1], stepsize)
-            ystops = range(tilesize, array_size[1], stepsize)
-            ytiles = list(zip(ystarts, ystops))
-            ytiles.append((ytiles[-1][0] + stepsize, array_size[1]))
-
-        if tilesize >= array_size[0]:
-            xtiles = [(0, array_size[0])]
-        else:
-            xstarts = range(0, array_size[0], stepsize)
-            xstops = range(tilesize, array_size[0], stepsize)
-            xtiles = list(zip(xstarts, xstops))
-            xtiles.append((xtiles[-1][0] + stepsize, array_size[0]))
-        tiles = itertools.product(xtiles, ytiles)
-
-        for tile in tiles:
-            # xstart, ystart, xcount, ycount
-            xstart = tile[0][0]
-            ystart = tile[1][0]
-            xstop = tile[0][1]
-            ystop = tile[1][1]
-            pixels = [xstart, ystart,
-                      xstop - xstart,
-                      ystop - ystart]
-
-            array = self.geodata.read_array(pixels=pixels)
-            xystart = [xstart, ystart]
+        slices = utils.tile(array_size, tilesize=tilesize, overlap=overlap)
+        for s in slices:
+            xystart = [s[0], s[1]]
+            array = self.geodata.read_array(pixels=s)
             self.extract_features(array, xystart, *args, **kwargs)
 
-    def load_features(self, in_path, format='npy'):
+    def load_features(self, in_path, format='npy', **kwargs):
         """
         Load keypoints and descriptors for the given image
         from a HDF file.
@@ -392,12 +364,12 @@ class Node(dict, MutableMapping):
                   PATH to the hdf file or a HDFDataset object handle
 
         format : {'npy', 'hdf'}
+                 The format that the features are stored in.  Default: npy.
         """
         if format == 'npy':
             keypoints, descriptors = io_keypoints.from_npy(in_path)
         elif format == 'hdf':
-            keypoints, descriptors = io_keypoints.from_hdf(in_path,
-                                                           key=self['image_name'])
+            keypoints, descriptors = io_keypoints.from_hdf(in_path, **kwargs)
 
         self.keypoints = keypoints
         self.descriptors = descriptors

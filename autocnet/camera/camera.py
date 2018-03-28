@@ -38,13 +38,13 @@ def idealized_camera():
      : ndarray
        (3,4) with diagonal 1
     """
-    return np.eye(3, 4)
-
+    i = np.eye(3, 4)
+    i[:,-1] = 0
+    return i
 
 def estimated_camera_from_f(f):
     """
     Estimate a camera matrix using a fundamental matrix.
-
 
     Parameters
     ----------
