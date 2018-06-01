@@ -3,9 +3,11 @@ package:
   version: 0.1.0
 channels:
   - conda-forge
+  
 source:
    git_url: https://github.com/USGS-Astrogeology/autocnet.git
-   #path: ../
+   git_rev: dev
+
 requirements:
   build:
     - python=3
