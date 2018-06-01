@@ -21,7 +21,7 @@ requirements:
     - cython
     - matplotlib
     - geopandas
-    - opencv3
+    - opencv
     - numpy
     - plio
     - gdal
@@ -36,7 +36,7 @@ requirements:
     - cython
     - matplotlib
     - geopandas
-    - opencv3
+    - opencv
     - numpy
     - plio
     - gdal
