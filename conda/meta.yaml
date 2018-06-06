@@ -1,5 +1,5 @@
 package:
-  name: autocnet-dev
+  name: autocnet
   version: 0.2.0
   
 channels:
