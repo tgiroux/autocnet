@@ -47,4 +47,4 @@ We suggest using Anaconda Python to install Autocnet within a virtual environmen
    * ``conda config --env --add channels conda-forge``
    * ``conda config --env --add channels menpo``
    * ``conda config --env --add channels usgs-astrogeology``
-#. Finally, install autocnet: ``conda install autocnet-dev``
+#. Finally, install autocnet: ``conda install autocnet``
