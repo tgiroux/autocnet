@@ -90,15 +90,6 @@ def subpixel_phase(template, search, **kwargs):
     (y_shift, x_shift), error, diffphase = register_translation(search, template, **kwargs)
     return x_shift, y_shift, (error, diffphase)
 
-def subpixel_composite(asub, bsub, b_subpixel_shift=[0,0], template_extents=25, phase_kwargs={}, template_kwargs={}):
-    x_shift, y_shift, error = subpixel_phase(asub, bsub, **phase_kwargs)
-
-    asize = asub.shape
-    bsize = bsub.shape
-
-    amini = asub[asub.shape]
-
-
 def subpixel_offset(template, search, **kwargs):
     """
     Uses a pattern-matcher on subsets of two images determined from the passed-in keypoints and optional sizes to
