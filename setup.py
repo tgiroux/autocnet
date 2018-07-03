@@ -6,7 +6,6 @@ from autocnet.examples import available
 with open('README.rst', 'r') as f:
     long_description = f.read()
 
-
 def setup_package():
     examples = set()
     for i in available():
