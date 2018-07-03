@@ -1,5 +1,7 @@
 import numpy as np
 
+from skimage.feature import register_translation
+
 from autocnet.matcher import naive_template
 from autocnet.matcher import ciratefi
 
@@ -54,6 +56,47 @@ def clip_roi(img, center, img_size):
         clipped_img = img.read_array(pixels=[x_start, y_start,
                                              x_stop + 1, y_stop + 1])
     return clipped_img
+
+def subpixel_phase(template, search, **kwargs):
+    """
+    Apply the spectral domain matcher to a search and template image. To
+    shift the images, the x_shift and y_shift, need to be subtracted from
+    the center of the search image. It may also be necessary to apply the
+    fractional pixel adjustment as well (if for example the center of the
+    search is not an integer); this function do not manage shifting.
+
+    Parameters
+    ----------
+    template : ndarray
+               The template used to search
+
+    search : ndarray
+             The search image
+
+    Returns
+    -------
+    x_offset : float
+               Shift in the x-dimension
+
+    y_offset : float
+               Shift in the y-dimension
+
+    strength : tuple
+               With the RMSE error and absolute difference in phase
+    """
+    if not template.shape == search.shape:
+        raise ValueError('Both the template and search images must be the same shape.')
+
+    (y_shift, x_shift), error, diffphase = register_translation(search, template, **kwargs)
+    return x_shift, y_shift, (error, diffphase)
+
+def subpixel_composite(asub, bsub, b_subpixel_shift=[0,0], template_extents=25, phase_kwargs={}, template_kwargs={}):
+    x_shift, y_shift, error = subpixel_phase(asub, bsub, **phase_kwargs)
+
+    asize = asub.shape
+    bsize = bsub.shape
+
+    amini = asub[asub.shape]
 
 
 def subpixel_offset(template, search, **kwargs):
