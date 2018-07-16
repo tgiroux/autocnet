@@ -14,12 +14,14 @@ from autocnet.utils import utils
 from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.matcher import suppression_funcs as spf
 from autocnet.matcher import subpixel as sp
+from autocnet.matcher import cpu_ring_matcher
 from autocnet.transformation import fundamental_matrix as fm
 from autocnet.transformation import homography as hm
 from autocnet.vis.graph_view import plot_edge, plot_node, plot_edge_decomposition
 from autocnet.cg import cg
 
 from plio.io.io_gdal import GeoDataset
+from plio.spatial.transformations import reproject
 
 
 class Edge(dict, MutableMapping):
@@ -77,7 +79,17 @@ class Edge(dict, MutableMapping):
             self._matches = value
         else:
             raise(TypeError)
-            
+    
+    @property
+    def ring(self):
+        if not hasattr(self, '_ring'):
+            self._ring = None
+        return self._ring
+
+    @ring.setter
+    def ring(self, val):
+        self._ring = val
+
     def match(self, k=2, **kwargs):
 
         """
@@ -113,6 +125,90 @@ class Edge(dict, MutableMapping):
             The number of neighbors to find
         """
         pass
+
+    def ring_match(self, *args, **kwargs):
+        ref_kps =  self.source.keypoints
+        ref_desc = self.source.descriptors
+        tar_kps = self.destination.keypoints
+        tar_desc = self.destination.descriptors
+
+        if not 'xm' in ref_kps.columns:
+            warnings.warn('To ring match body centered coordinates (xm, ym, zm) must be in the keypoints')
+            return
+        ref_feats = ref_kps[['x', 'y', 'xm', 'ym', 'zm']].values
+        tar_feats = tar_kps[['x', 'y', 'xm', 'ym', 'zm']].values
+
+        xref, xtar, pidx, ring = cpu_ring_matcher.ring_match(ref_feats, tar_feats,
+                                                           ref_desc, tar_desc,
+                                                           *args, **kwargs)
+
+        if pidx is None:
+            return
+        self.ring = ring
+        pidx = cpu_ring_matcher.check_pidx_duplicates(pidx)
+
+        #Set the columns of the matches df
+        matches = np.empty((pidx.shape[0], 4))
+        matches[:,0] = self.source['node_id']
+        matches[:,1] = pidx[:,0]
+        matches[:,2] = self.destination['node_id']
+        matches[:,3] = pidx[:,1]
+
+        matches = pd.DataFrame(matches, columns=['source',
+                                                 'source_idx',
+                                                 'destination',
+                                                 'destination_idx']).astype(np.float32)
+        
+        self.matches = matches
+
+    def add_coordinates_to_matches(self):
+        """
+        Add source and destination x/y columns to the matches dataframe. This
+        will add to the overall memory needed to store matches, but makes
+        access to x,y easier as a join on the keypoints is not requires.
+        """
+        skps = self.get_keypoints(self.source, index=self.matches.source_idx)
+        dkps = self.get_keypoints(self.destination, index=self.matches.destination_idx)
+        matches = self.matches
+        matches[['source_x', 'source_y']] = skps.values
+        matches[['destination_x', 'destination_y']] = dkps.values
+        self.matches = matches
+
+    def project_matches(self, semimajor, semiminor, on='source', srid=None):
+        """
+        Project matches.
+        """
+        try:
+            coords = self.matches[['{}_y'.format(on),'{}_x'.format(on)]].values
+        except:
+            self.add_coordinates_to_matches()
+            coords = self.matches[['{}_y'.format(on),'{}_x'.format(on)]].values
+
+        node = getattr(self, on)
+        camera = getattr(node, 'camera')
+        if camera is None:
+            warnings.warn('Unable to project matches without a sensor model.')
+            return
+        
+        matches = self.matches
+        
+        gnd = np.empty((len(coords), 3))
+        # Project the points to the surface and reproject into latlon space
+        for i in range(gnd.shape[0]):
+            gnd[i] = camera.imageToGround(coords[i][0], coords[i][1], 0)
+        lon, lat, alt = reproject(gnd.T, semimajor, semiminor,
+                                    'geocent', 'latlon')
+        if srid:
+            geoms = []
+            for coord in zip(lon, lat, alt):
+                geoms.append('SRID={};POINTZ({} {} {})'.format(srid, coord[0],
+                                                                     coord[1],
+                                                                     coord[2]))
+            matches['geom'] = geoms
+        
+        matches['lat'] = lat
+        matches['lon'] = lon
+        self.matches = matches
 
     def decompose(self):
         """
@@ -198,6 +294,11 @@ class Edge(dict, MutableMapping):
         if not hasattr(index, '__iter__') and index is not None:
             raise TypeError
         keypts = node.get_keypoint_coordinates(index=index, homogeneous=homogeneous)
+        # If the index is passed, the results are returned sorted. The index is not
+        # necessarily sorted, so 'unsort' so that the return order matches the passed
+        # order
+        if index is not None:
+            keypts = keypts.reindex(index)
         # If we only want keypoints in the overlap
         if overlap:
             if self.source == node:
