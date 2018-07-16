@@ -281,7 +281,7 @@ class Node(dict, MutableMapping):
         if index is None:
             keypoints = self.keypoints[['x', 'y']]
         else:
-            keypoints = self.keypoints.loc[index][['x', 'y']]
+            keypoints = self.keypoints.loc[self.keypoints.index.intersection(index)][['x', 'y']]
 
         if homogeneous:
             keypoints['homogeneous'] = 1
@@ -329,17 +329,6 @@ class Node(dict, MutableMapping):
 
         new_keypoints, new_descriptors = Node._extract_features(array, *args, **kwargs)
         count = len(self.keypoints)
-        
-        if camera:
-            # Project the sift keypoints to the ground
-            def func(row, args):
-                camera = args[0]
-                gnd = getattr(camera, 'imageToGround')(row[1], row[0], 0)
-                return gnd
-            feats = new_keypoints[['x', 'y']].values
-            gnd = np.apply_along_axis(func, 1, feats, args=(camera, ))
-            gnd = pd.DataFrame(gnd, columns=['xm', 'ym', 'zm'], index=keypoints.index)
-            keypoints = pd.concat([keypoints, gnd], axis=1)
 
         # If this is a tile, push the keypoints to the correct start xy
         if xystart:
@@ -347,21 +336,22 @@ class Node(dict, MutableMapping):
             new_keypoints['y'] += xystart[1]
 
         concat_kps = pd.concat((self.keypoints, new_keypoints))
-
-        descriptor_mask = concat_kps.duplicated()
-        descriptor_mask = descriptor_mask[count:]        
-        # Removed duplicated and re-index the merged keypoints
-        concat_kps.drop_duplicates(inplace=True)
+        descriptor_mask = concat_kps.duplicated(keep='last')
         concat_kps.reset_index(inplace=True, drop=True)
+        concat_kps.drop_duplicates(inplace=True)
+        #descriptor_mask = descriptor_mask[count:]        
+        # Removed duplicated and re-index the merged keypoints
+        
+        
         if self.descriptors is not None:
-            concat = np.concatenate((self.descriptors, new_descriptors[~descriptor_mask]))
-            self.descriptors = concat
-        else:
-            self.descriptors = new_descriptors
+            concat = np.concatenate((self.descriptors, new_descriptors))
+            new_descriptors = concat[concat_kps.index]
+        
+        self.descriptors = new_descriptors
         self.keypoints = concat_kps
         
         lkps = len(self.keypoints)
-
+        print(lkps, len(self.descriptors))
         assert lkps == len(self.descriptors)
 
         if lkps > 0:
@@ -409,6 +399,23 @@ class Node(dict, MutableMapping):
 
         if len(self.keypoints) > 0:
             return True
+
+    def project_keypoints(self):   
+        if self.camera is None:
+            # Without a camera, it is not possible to project
+            warnings.warn('Unable to project points, no camera available.')
+            return False
+        # Project the sift keypoints to the ground
+        def func(row, args):
+            camera = args[0]
+            gnd = getattr(camera, 'imageToGround')(row[1], row[0], 0)
+            return gnd
+        feats = self.keypoints[['x', 'y']].values
+        gnd = np.apply_along_axis(func, 1, feats, args=(self.camera, ))
+        gnd = pd.DataFrame(gnd, columns=['xm', 'ym', 'zm'], index=self.keypoints.index)
+        self.keypoints = pd.concat([self.keypoints, gnd], axis=1)
+
+        return True
 
     def load_features(self, in_path, format='npy', **kwargs):
         """
