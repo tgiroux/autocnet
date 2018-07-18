@@ -267,46 +267,6 @@ class Edge(dict, MutableMapping):
         pass
         #return.masks[maskname] = od.distance_ratio(matches, **kwargs)
 
-    def compute_fundamental_matrix(self, clean_keys=[], maskname='fundamental', **kwargs):
-        """
-        Estimate the fundamental matrix (F) using the correspondences tagged to this
-        edge.
-
-
-        Parameters
-        ----------
-        clean_keys : list
-                     Of strings used to apply masks to omit correspondences
-
-        method : {linear, nonlinear}
-                 Method to use to compute F.  Linear is significantly faster at
-                 the cost of reduced accuracy.
-
-        See Also
-        --------
-        autocnet.transformation.transformations.FundamentalMatrix
-
-        """
-        matches, mask = self.clean(clean_keys)
-
-        # TODO: Homogeneous is horribly inefficient here, use Numpy array notation
-        s_keypoints = self.get_keypoints('source', index=matches['source_idx'])
-        d_keypoints = self.get_keypoints('destination', index=matches['destination_idx'])
-
-
-        # Replace the index with the matches index.
-        s_keypoints.index = matches.index
-        d_keypoints.index = matches.index
-        
-        self['fundamental_matrix'], fmask = fm.compute_fundamental_matrix(s_keypoints, d_keypoints, **kwargs)
-
-        if isinstance(self['fundamental_matrix'], np.ndarray):
-            # Convert the truncated RANSAC mask back into a full length mask
-            mask[mask] = fmask
-
-            # Set the initial state of the fundamental mask in the masks
-            self.masks[maskname] = mask
-
     @utils.methodispatch
     def get_keypoints(self, node, index=None, homogeneous=False, overlap=False):
         if not hasattr(index, '__iter__') and index is not None:
@@ -336,8 +296,40 @@ class Edge(dict, MutableMapping):
         node = node.lower()
         node = getattr(self, node)
         return self.get_keypoints(node, index=index, homogeneous=homogeneous, overlap=overlap)
+   
+    def compute_fundamental_matrix(self, clean_keys=[], maskname='fundamental', **kwargs):
+        """
+        Estimate the fundamental matrix (F) using the correspondences tagged to this
+        edge.
 
-    def compute_fundamental_error(self, clean_keys=[]):
+
+        Parameters
+        ----------
+        clean_keys : list
+                     Of strings used to apply masks to omit correspondences
+
+        method : {linear, nonlinear}
+                 Method to use to compute F.  Linear is significantly faster at
+                 the cost of reduced accuracy.
+
+        See Also
+        --------
+        autocnet.transformation.transformations.FundamentalMatrix
+
+        """
+        _, mask = self.clean(clean_keys)
+        s_keypoints, d_keypoints = self.get_match_coordinates(clean_keys=clean_keys)
+        
+        self.fundamental_matrix, fmask = fm.compute_fundamental_matrix(s_keypoints, d_keypoints, **kwargs)
+
+        if isinstance(self.fundamental_matrix, np.ndarray):
+            # Convert the truncated RANSAC mask back into a full length mask
+            mask[mask] = fmask
+
+            # Set the initial state of the fundamental mask in the masks
+            self.masks[maskname] = mask
+
+    def compute_fundamental_error(self, method='equality', clean_keys=[]):
         """
         Given a fundamental matrix, compute the reprojective error between
         a two sets of keypoints.
@@ -353,17 +345,20 @@ class Edge(dict, MutableMapping):
         error : pd.Series
                 of reprojective error indexed to the matches data frame
         """
-        if self['fundamental_matrix'] is None:
+        if self.fundamental_matrix is None:
             warnings.warn('No fundamental matrix has been compute for this edge.')
-        matches, masks = self.clean(clean_keys)
 
-        source_kps = self.source.get_keypoint_coordinates(index=matches['source_idx'])
-        destination_kps = self.destination.get_keypoint_coordinates(index=matches['destination_idx'])
-
-        error = fm.compute_fundamental_error(self['fundamental_matrix'], source_kps, destination_kps)
+        matches, _ = self.clean(clean_keys)
+        s_keypoints, d_keypoints = self.get_match_coordinates(clean_keys=clean_keys)
+        if method == 'equality':
+            error = fm.compute_fundamental_error(self.fundamental_matrix, s_keypoints, d_keypoints)
+        elif method == 'projection':
+            error = fm.compute_reprojection_error(self.fundamental_matrix, s_keypoints, d_keypoints)
 
         error = pd.Series(error, index=matches.index)
-        return error
+        c = self.costs
+        c['fundamental_{}'.format(method)] = error.values
+        self.costs = c
 
     def compute_homography(self, method='ransac', clean_keys=[], pid=None, maskname='homography', **kwargs):
         """
@@ -437,20 +432,13 @@ class Edge(dict, MutableMapping):
         s_img = self.source.geodata
         d_img = self.destination.geodata
 
-        # Setup to store output to append to dataframes
-        shifts_x = np.empty(len(matches))
-        shifts_x[:] = np.nan
-        shifts_y = np.empty(len(matches))
-        shifts_y[:] = np.nan
-
         # Determine which algorithm is going ot be used.
         if method == 'phase':
             func = sp.subpixel_phase
-            strengths = np.empty((len(matches), 2))
+            shifts_x, shifts_y, strengths, new_x, new_y = sp._prep_subpixel(len(matches), 2)
         elif method == 'template':
             func = sp.subpixel_template
-            strengths = np.empty(len(matches))
-        strengths[:] = np.nan
+            shifts_x, shifts_y, strengths, new_x, new_y = sp._prep_subpixel(len(matches), 1)
 
         # for each edge, calculate this for each keypoint pair
         for i, (idx, row) in enumerate(matches.iterrows()):
@@ -485,11 +473,15 @@ class Edge(dict, MutableMapping):
 
             shifts_x[i] = shift_x
             shifts_y[i] = shift_y
+            new_x[i] = d_keypoint.x - shift_x
+            new_y[i] = d_keypoint.y - shift_y
             strengths[i] = metrics
         
         matches['shift_x'] = shifts_x
         matches['shift_y'] = shifts_y
-        
+        matches['destination_x'] = new_x
+        matches['destination_y'] = new_y
+
         costs = self.costs
         if method == 'phase':
             costs['phase'] = [i[0] for i in strengths]
@@ -507,7 +499,6 @@ class Edge(dict, MutableMapping):
         m = self.matches
         m[mask.values] = matches
         self.matches = m 
-
 
     def suppress(self, suppression_func=spf.correlation, clean_keys=[], maskname='suppression', **kwargs):
         """
@@ -696,17 +687,20 @@ class Edge(dict, MutableMapping):
         self['source_mbr'] = smbr
         self['destin_mbr'] = dmbr
 
+    def get_match_coordinates(self, clean_keys=[]):
+        matches = self.get_matches(clean_keys=clean_keys)
+        skps = matches[['source_x', 'source_y']]
+        dkps = matches[['destination_x', 'destination_y']]
+
+        return skps, dkps
+
     def get_matches(self, clean_keys=[]): # pragma: no cover
         if self.matches.empty:
             return pd.DataFrame()
 
-        match, _ = self.clean(clean_keys=clean_keys)
-        match = match[['source_image', 'source_idx',
-                       'destination_image', 'destination_idx']]
-        skps = self.get_keypoints('source', index=match.source_idx)
-        skps.columns = ['source_x', 'source_y']
-        dkps = self.get_keypoints('destination', index=match.destination_idx)
-        dkps.columns = ['destination_x', 'destination_y']
-        match = match.join(skps, on='source_idx')
-        match = match.join(dkps, on='destination_idx')
-        return match
+        self.add_coordinates_to_matches()
+        matches, _ = self.clean(clean_keys=clean_keys)
+        skps = matches[['source_x', 'source_y']]
+        dkps = matches[['destination_x', 'destination_y']]
+        
+        return matches

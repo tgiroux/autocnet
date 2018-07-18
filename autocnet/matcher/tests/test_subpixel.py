@@ -18,6 +18,13 @@ def apollo_subsets():
     print(arr1.shape, arr2.shape)
     return arr1, arr2
 
+@pytest.mark.parametrize("nmatches, nstrengths", [(10,1), (10,2)])
+def test_prep_subpixel(nmatches, nstrengths):
+    arrs = sp._prep_subpixel(nmatches, nstrengths=nstrengths)
+    assert len(arrs) == 5
+    assert arrs[2].shape == (nmatches, nstrengths)
+    assert np.isnan(arrs[0][0])
+
 def test_clip_roi():
     img = np.arange(10000).reshape(100, 100)
     center = (4, 4)

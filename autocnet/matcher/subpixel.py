@@ -8,6 +8,48 @@ from autocnet.matcher import ciratefi
 
 
 # TODO: look into KeyPoint.size and perhaps use to determine an appropriately-sized search/template.
+def _prep_subpixel(nmatches, nstrengths=2):
+    """
+    Setup the data strutures to return for subpixel matching.
+
+    Parameters
+    ----------
+    nmatches : int
+                The number of pixels to be subpixel matches
+
+    nstrengths : int
+                    The number of 'strength' values to be returned
+                    by the subpixel matching method.
+
+    Returns
+    -------
+    shifts_x : ndarray
+               (nmatches, 1) to store the x_shift parameter
+    
+    shifts_y : ndarray
+               (nmatches, 1) to store the y_shift parameter
+
+    strengths : ndarray
+                (nmatches, nstrengths) to store the strengths for each point
+
+    new_x : ndarray
+            (nmatches, 1) to store the updated x coordinates
+    
+    new_y : ndarray
+            (nmatches, 1) to store the updated y coordinates
+    """
+    # Setup to store output to append to dataframes
+    shifts_x = np.empty(nmatches)
+    shifts_x[:] = np.nan
+    shifts_y = np.empty(nmatches)
+    shifts_y[:] = np.nan
+    strengths = np.empty((nmatches, nstrengths))
+    strengths[:] = np.nan
+
+    new_x = np.empty(nmatches)
+    new_y = np.empty(nmatches)
+
+    return shifts_x, shifts_y, strengths, new_x, new_y
 
 def clip_roi(img, center_x, center_y, size_x=200, size_y=200):
     """
