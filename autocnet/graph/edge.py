@@ -154,7 +154,7 @@ class Edge(dict, MutableMapping):
         ref_feats = ref_kps[['x', 'y', 'xm', 'ym', 'zm']].values
         tar_feats = tar_kps[['x', 'y', 'xm', 'ym', 'zm']].values
 
-        xref, xtar, pidx, ring = cpu_ring_matcher.ring_match(ref_feats, tar_feats,
+        _, _, pidx, ring = cpu_ring_matcher.ring_match(ref_feats, tar_feats,
                                                            ref_desc, tar_desc,
                                                            *args, **kwargs)
 
@@ -187,10 +187,10 @@ class Edge(dict, MutableMapping):
         """
         skps = self.get_keypoints(self.source, index=self.matches.source_idx)
         dkps = self.get_keypoints(self.destination, index=self.matches.destination_idx)
-        matches = self.matches
-        matches[['source_x', 'source_y']] = skps.values
-        matches[['destination_x', 'destination_y']] = dkps.values
-        self.matches = matches
+        self.matches['source_x'] = skps.x.values
+        self.matches['source_y'] = skps.y.values
+        self.matches['destination_x'] = dkps.x.values
+        self.matches['destination_y'] = dkps.y.values
 
     def project_matches(self, semimajor, semiminor, on='source', srid=None):
         """
@@ -319,8 +319,9 @@ class Edge(dict, MutableMapping):
         """
         _, mask = self.clean(clean_keys)
         s_keypoints, d_keypoints = self.get_match_coordinates(clean_keys=clean_keys)
-        
         self.fundamental_matrix, fmask = fm.compute_fundamental_matrix(s_keypoints, d_keypoints, **kwargs)
+        
+        print(fmask)
 
         if isinstance(self.fundamental_matrix, np.ndarray):
             # Convert the truncated RANSAC mask back into a full length mask
@@ -348,17 +349,14 @@ class Edge(dict, MutableMapping):
         if self.fundamental_matrix is None:
             warnings.warn('No fundamental matrix has been compute for this edge.')
 
-        matches, _ = self.clean(clean_keys)
+        matches, mask = self.clean(clean_keys)
         s_keypoints, d_keypoints = self.get_match_coordinates(clean_keys=clean_keys)
         if method == 'equality':
             error = fm.compute_fundamental_error(self.fundamental_matrix, s_keypoints, d_keypoints)
         elif method == 'projection':
             error = fm.compute_reprojection_error(self.fundamental_matrix, s_keypoints, d_keypoints)
 
-        error = pd.Series(error, index=matches.index)
-        c = self.costs
-        c['fundamental_{}'.format(method)] = error.values
-        self.costs = c
+        self.costs.loc[mask, 'fundamental_{}'.format(method)] = error
 
     def compute_homography(self, method='ransac', clean_keys=[], pid=None, maskname='homography', **kwargs):
         """
@@ -477,28 +475,17 @@ class Edge(dict, MutableMapping):
             new_y[i] = d_keypoint.y - shift_y
             strengths[i] = metrics
         
-        matches['shift_x'] = shifts_x
-        matches['shift_y'] = shifts_y
-        matches['destination_x'] = new_x
-        matches['destination_y'] = new_y
+        self.matches.loc[mask, 'shift_x'] = shifts_x
+        self.matches.loc[mask, 'shift_y'] = shifts_y
+        self.matches.loc[mask, 'destination_x'] = new_x
+        self.matches.loc[mask, 'destination_y'] = new_y
 
-        costs = self.costs
         if method == 'phase':
-            costs['phase'] = [i[0] for i in strengths]
-            costs['rmse'] = [i[1] for i in strengths]
+            self.costs.loc[mask, 'phase'] = [i[0] for i in strengths]
+            self.costs.loc[mask, 'rmse'] = [i[1] for i in strengths]
         elif method == 'template':
-            costs['correlation'] = strengths
-
-        c = self.costs
-        # Set the defaults for the columns
-        for column in costs.columns:
-            c[column] = np.nan
-        c[mask.values] = costs
-        self.costs = c
-
-        m = self.matches
-        m[mask.values] = matches
-        self.matches = m 
+            self.costs.loc[mask, 'correlation'] = strengths
+ 
 
     def suppress(self, suppression_func=spf.correlation, clean_keys=[], maskname='suppression', **kwargs):
         """

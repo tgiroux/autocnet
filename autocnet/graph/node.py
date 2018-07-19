@@ -281,7 +281,7 @@ class Node(dict, MutableMapping):
         if index is None:
             keypoints = self.keypoints[['x', 'y']]
         else:
-            keypoints = self.keypoints.loc[self.keypoints.index.intersection(index)][['x', 'y']]
+            keypoints = self.keypoints.loc[index][['x', 'y']]
 
         if homogeneous:
             keypoints['homogeneous'] = 1

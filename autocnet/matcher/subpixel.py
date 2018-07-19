@@ -74,7 +74,12 @@ def clip_roi(img, center_x, center_y, size_x=200, size_y=200):
     clipped_img : ndarray
                   The clipped image
     """
-    raster_size = img.raster_size
+    
+    try:
+        raster_size = img.raster_size
+    except:
+        # x,y form
+        raster_size = img.shape[::-1]
     axr, ax = modf(center_x)
     ayr, ay = modf(center_y)
 
@@ -89,7 +94,10 @@ def clip_roi(img, center_x, center_y, size_x=200, size_y=200):
 
     # Read from the upper left origin
     pixels=(int(ax-size_x), int(ay-size_y), size_x * 2, size_y * 2)
-    subarray = img.read_array(pixels=pixels)
+    try:
+        subarray = img.read_array(pixels=pixels)
+    except:
+        subarray = img[pixels[1]:pixels[1] + pixels[3] + 1, pixels[0]:pixels[0] + pixels[2] + 1]
     return subarray, axr, ayr
 
 def subpixel_phase(template, search, **kwargs):
