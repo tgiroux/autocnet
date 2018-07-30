@@ -50,10 +50,11 @@ class Edge(dict, MutableMapping):
         self.subpixel_matches = pd.DataFrame()
         self._matches = pd.DataFrame()
         self['weights'] = {}
-        
+
         self['source_mbr'] = None
         self['destin_mbr'] = None
         self['overlap_latlon_coords'] = None
+
 
     def __repr__(self):
         return """
@@ -62,9 +63,11 @@ class Edge(dict, MutableMapping):
         Available Masks: {}
         """.format(self.source, self.destination, self.masks)
 
+
     def __eq__(self, other):
         return utils.compare_dicts(self.__dict__, other.__dict__) *\
                utils.compare_dicts(self, other)
+
 
     @property
     def masks(self):
@@ -717,5 +720,4 @@ class Edge(dict, MutableMapping):
         matches, _ = self.clean(clean_keys=clean_keys)
         skps = matches[['source_x', 'source_y']]
         dkps = matches[['destination_x', 'destination_y']]
-        
         return matches

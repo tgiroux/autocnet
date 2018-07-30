@@ -45,7 +45,7 @@ def distance_ratio(edge, matches, ratio=0.8, single=False):
     return mask
 
 
-def spatial_suppression(df, bounds, xkey='lon', ykey='lat', k=60, error_k=0.05, nsteps=250):
+def spatial_suppression(df, bounds, xkey='x', ykey='y', k=60, error_k=0.05, nsteps=250):
     """
     Apply the spatial suppression algorithm over an arbitrary domain for all of the spatial
     data in the provided data frame.
@@ -64,7 +64,7 @@ def spatial_suppression(df, bounds, xkey='lon', ykey='lat', k=60, error_k=0.05, 
 
     ykey : str
            The column name for the y coordinates
-    
+
     k : int
         The desired number of points after suppression
 
@@ -170,7 +170,7 @@ def spatial_suppression(df, bounds, xkey='lon', ykey='lat', k=60, error_k=0.05, 
             min_idx = mid_idx
 
     mask.loc[list(result)] = True
-    
+
     return mask, len(result)
 
 
