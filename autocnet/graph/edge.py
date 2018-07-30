@@ -51,10 +51,11 @@ class Edge(dict, MutableMapping):
         self.subpixel_matches = pd.DataFrame()
         self._matches = pd.DataFrame()
         self['weights'] = {}
-        
+
         self['source_mbr'] = None
         self['destin_mbr'] = None
         self['overlap_latlon_coords'] = None
+
 
     def __repr__(self):
         return """
@@ -63,16 +64,18 @@ class Edge(dict, MutableMapping):
         Available Masks: {}
         """.format(self.source, self.destination, self.masks)
 
+
     def __eq__(self, other):
         return utils.compare_dicts(self.__dict__, other.__dict__) *\
                utils.compare_dicts(self, other)
+
 
     @property
     def matches(self):
         if not hasattr(self, '_matches'):
             self._matches = pd.DataFrame()
         return self._matches
-    
+
     @matches.setter
     def matches(self, value):
         if isinstance(value, pd.DataFrame):
@@ -82,7 +85,7 @@ class Edge(dict, MutableMapping):
                 self.costs = pd.DataFrame(index=value.index)
         else:
             raise(TypeError)
-    
+
     @property
     def costs(self):
         if not hasattr(self, '_costs'):
@@ -174,7 +177,7 @@ class Edge(dict, MutableMapping):
                                                  'source_idx',
                                                  'destination',
                                                  'destination_idx']).astype(np.float32)
-        
+
         matches = matches.drop_duplicates()
 
         self.matches = matches
@@ -207,9 +210,9 @@ class Edge(dict, MutableMapping):
         if camera is None:
             warnings.warn('Unable to project matches without a sensor model.')
             return
-        
+
         matches = self.matches
-        
+
         gnd = np.empty((len(coords), 3))
         # Project the points to the surface and reproject into latlon space
         for i in range(gnd.shape[0]):
@@ -223,7 +226,7 @@ class Edge(dict, MutableMapping):
                                                                      coord[1],
                                                                      coord[2]))
             matches['geom'] = geoms
-        
+
         matches['lat'] = lat
         matches['lon'] = lon
         self.matches = matches
@@ -296,7 +299,7 @@ class Edge(dict, MutableMapping):
         node = node.lower()
         node = getattr(self, node)
         return self.get_keypoints(node, index=index, homogeneous=homogeneous, overlap=overlap)
-   
+
     def compute_fundamental_matrix(self, clean_keys=[], maskname='fundamental', **kwargs):
         """
         Estimate the fundamental matrix (F) using the correspondences tagged to this
@@ -320,7 +323,7 @@ class Edge(dict, MutableMapping):
         _, mask = self.clean(clean_keys)
         s_keypoints, d_keypoints = self.get_match_coordinates(clean_keys=clean_keys)
         self.fundamental_matrix, fmask = fm.compute_fundamental_matrix(s_keypoints, d_keypoints, **kwargs)
-        
+
         print(fmask)
 
         if isinstance(self.fundamental_matrix, np.ndarray):
@@ -450,7 +453,7 @@ class Edge(dict, MutableMapping):
                                      size_x=template_size, size_y=template_size)
             d_search, dx, dy = sp.clip_roi(d_img, d_keypoint.x, d_keypoint.y,
                                    size_x=search_size, size_y=search_size)
-            
+
             # Now check to see if these are the same size.
             if method == 'phase' and (s_template.shape != d_search.shape):
                 s_size = s_template.shape
@@ -459,8 +462,8 @@ class Edge(dict, MutableMapping):
                 s_template, sx, sy = sp.clip_roi(s_img, s_keypoint.x, s_keypoint.y,
                                      size_x=updated_size, size_y=updated_size)
                 d_search, dx, dy = sp.clip_roi(d_img, d_keypoint.x, d_keypoint.y,
-                                    size_x=updated_size, size_y=updated_size)         
-            
+                                    size_x=updated_size, size_y=updated_size)
+
             shift_x, shift_y, metrics = func(s_template, d_search, **kwargs)
 
             # ROIs and clipping all work using whole pixels. The clip_roi func returns
@@ -474,7 +477,7 @@ class Edge(dict, MutableMapping):
             new_x[i] = d_keypoint.x - shift_x
             new_y[i] = d_keypoint.y - shift_y
             strengths[i] = metrics
-        
+
         self.matches.loc[mask, 'shift_x'] = shifts_x
         self.matches.loc[mask, 'shift_y'] = shifts_y
         self.matches.loc[mask, 'destination_x'] = new_x
@@ -485,9 +488,9 @@ class Edge(dict, MutableMapping):
             self.costs.loc[mask, 'rmse'] = [i[1] for i in strengths]
         elif method == 'template':
             self.costs.loc[mask, 'correlation'] = strengths
- 
 
-    def suppress(self, suppression_func=spf.correlation, clean_keys=[], maskname='suppression', **kwargs):
+
+    def suppress(self, suppression_func=spf.distance, clean_keys=[], maskname='suppression', **kwargs):
         """
         Apply a disc based suppression algorithm to get a good spatial
         distribution of high quality points, where the user defines some
@@ -689,5 +692,5 @@ class Edge(dict, MutableMapping):
         matches, _ = self.clean(clean_keys=clean_keys)
         skps = matches[['source_x', 'source_y']]
         dkps = matches[['destination_x', 'destination_y']]
-        
+
         return matches
