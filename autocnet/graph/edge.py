@@ -17,7 +17,7 @@ from autocnet.matcher import subpixel as sp
 from autocnet.matcher import cpu_ring_matcher
 from autocnet.transformation import fundamental_matrix as fm
 from autocnet.transformation import homography as hm
-from autocnet.vis.graph_view import plot_edge, plot_node, plot_edge_decomposition
+from autocnet.vis.graph_view import plot_edge, plot_node, plot_edge_decomposition, plot_matches
 from autocnet.cg import cg
 
 from plio.io.io_gdal import GeoDataset
@@ -47,7 +47,6 @@ class Edge(dict, MutableMapping):
         self.destination = destination
         self['homography'] = None
         self['fundamental_matrix'] = None
-        self.masks = pd.DataFrame()
         self.subpixel_matches = pd.DataFrame()
         self._matches = pd.DataFrame()
         self['weights'] = {}
@@ -66,6 +65,19 @@ class Edge(dict, MutableMapping):
     def __eq__(self, other):
         return utils.compare_dicts(self.__dict__, other.__dict__) *\
                utils.compare_dicts(self, other)
+
+    @property
+    def masks(self):
+        if not hasattr(self, _masks):
+            self._masks = pd.DataFrame()
+        return self._masks
+
+    @masks.setter
+    def masks(self, value):
+        if isinstance(value, pd.DataFrame):
+            self._masks = value
+        else:
+            raise(TypeError)
 
     @property
     def matches(self):
@@ -321,7 +333,6 @@ class Edge(dict, MutableMapping):
         s_keypoints, d_keypoints = self.get_match_coordinates(clean_keys=clean_keys)
         self.fundamental_matrix, fmask = fm.compute_fundamental_matrix(s_keypoints, d_keypoints, **kwargs)
         
-        print(fmask)
 
         if isinstance(self.fundamental_matrix, np.ndarray):
             # Convert the truncated RANSAC mask back into a full length mask
@@ -443,12 +454,25 @@ class Edge(dict, MutableMapping):
             s_idx = int(row['source_idx'])
             d_idx = int(row['destination_idx'])
 
-            s_keypoint = self.source.get_keypoint_coordinates([s_idx])
-            d_keypoint = self.destination.get_keypoint_coordinates([d_idx])
+            if 'source_x' in row.index:
+                sx = row.source_x
+                sy = row.source_y
+            else:
+                s_keypoint = self.source.get_keypoint_coordinates([s_idx])
+                sx = s_keypoint.x
+                sy = s_keypoint.y
+    
+            if 'destination_x' in row.index:
+                dx = row.destination_x
+                dy = row.destination_y
+            else:
+                d_keypoint = self.destination.get_keypoint_coordinates([d_idx])
+                dx = d_keypoint.x
+                dy = d_keypoint.y
 
-            s_template, sx, sy = sp.clip_roi(s_img, s_keypoint.x, s_keypoint.y,
+            s_template, _, _ = sp.clip_roi(s_img, sx, sy,
                                      size_x=template_size, size_y=template_size)
-            d_search, dx, dy = sp.clip_roi(d_img, d_keypoint.x, d_keypoint.y,
+            d_search, dxr, dyr = sp.clip_roi(d_img, dx, dy,
                                    size_x=search_size, size_y=search_size)
             
             # Now check to see if these are the same size.
@@ -456,35 +480,32 @@ class Edge(dict, MutableMapping):
                 s_size = s_template.shape
                 d_size = d_search.shape
                 updated_size = int(min(s_size + d_size) / 2)
-                s_template, sx, sy = sp.clip_roi(s_img, s_keypoint.x, s_keypoint.y,
+                s_template, _, _ = sp.clip_roi(s_img, sx, sy,
                                      size_x=updated_size, size_y=updated_size)
-                d_search, dx, dy = sp.clip_roi(d_img, d_keypoint.x, d_keypoint.y,
+                d_search, dxr, dyr = sp.clip_roi(d_img, dx, dy,
                                     size_x=updated_size, size_y=updated_size)         
-            
             shift_x, shift_y, metrics = func(s_template, d_search, **kwargs)
 
             # ROIs and clipping all work using whole pixels. The clip_roi func returns
             # the subpixel components that are lost when converting to whole pixels
             # reapply those here.
-            shift_x += dx
-            shift_y += dy
+            shifts_x[i] = shift_x + dxr
+            shifts_y[i] = shift_y + dyr
 
-            shifts_x[i] = shift_x
-            shifts_y[i] = shift_y
-            new_x[i] = d_keypoint.x - shift_x
-            new_y[i] = d_keypoint.y - shift_y
+            new_x[i] = dx - shift_x
+            new_y[i] = dy - shift_y
             strengths[i] = metrics
-        
+
         self.matches.loc[mask, 'shift_x'] = shifts_x
         self.matches.loc[mask, 'shift_y'] = shifts_y
         self.matches.loc[mask, 'destination_x'] = new_x
         self.matches.loc[mask, 'destination_y'] = new_y
 
         if method == 'phase':
-            self.costs.loc[mask, 'phase'] = [i[0] for i in strengths]
-            self.costs.loc[mask, 'rmse'] = [i[1] for i in strengths]
+            self.costs.loc[mask, 'phase_diff'] = strengths[:,0]
+            self.costs.loc[mask, 'rmse'] = strengths[:,1]
         elif method == 'template':
-            self.costs.loc[mask, 'correlation'] = strengths
+            self.costs.loc[mask, 'correlation'] = strengths[:,0]
  
 
     def suppress(self, suppression_func=spf.correlation, clean_keys=[], maskname='suppression', **kwargs):
@@ -527,6 +548,12 @@ class Edge(dict, MutableMapping):
         matches, mask = self.clean(clean_keys=clean_keys)
         indices = pd.Index(matches['source_idx'].values)
         return plot_node(self.source, index_mask=indices, **kwargs)
+
+    def plot_matches(self, clean_keys=[], **kwargs):  # pragme: no cover
+        matches, mask = self.clean(clean_keys=clean_keys)
+        sourcegd = self.source.geodata
+        destingd = self.destination.geodata
+        return plot_matches(matches, sourcegd, destingd, **kwargs)
 
     def plot_destination(self, ax=None, clean_keys=[], **kwargs):  # pragma: no cover
         matches, mask = self.clean(clean_keys=clean_keys)
@@ -573,7 +600,8 @@ class Edge(dict, MutableMapping):
         else:
             mask = pd.Series(True, self.matches.index)
 
-        return self.matches[mask], mask
+        m = mask[mask==True]
+        return self.matches.loc[m.index], mask
 
     def overlap(self):
         """
@@ -676,8 +704,8 @@ class Edge(dict, MutableMapping):
 
     def get_match_coordinates(self, clean_keys=[]):
         matches = self.get_matches(clean_keys=clean_keys)
-        skps = matches[['source_x', 'source_y']]
-        dkps = matches[['destination_x', 'destination_y']]
+        skps = matches[['source_x', 'source_y']].astype(np.float)
+        dkps = matches[['destination_x', 'destination_y']].astype(np.float)
 
         return skps, dkps
 
