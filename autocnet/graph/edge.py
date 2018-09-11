@@ -71,7 +71,7 @@ class Edge(dict, MutableMapping):
 
     @property
     def masks(self):
-        if not hasattr(self, _masks):
+        if not hasattr(self, '_masks'):
             self._masks = pd.DataFrame()
         return self._masks
 
