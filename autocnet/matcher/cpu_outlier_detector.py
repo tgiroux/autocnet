@@ -112,7 +112,6 @@ def spatial_suppression(df, bounds, xkey='x', ykey='y', k=60, error_k=0.05, nste
         # Binary search
         mid_idx = int((min_idx + max_idx) / 2)
         if min_idx == mid_idx or mid_idx == max_idx:
-            print('ABOUT TO WARN')
             warnings.warn('Unable to optimally solve.')
             process = False
         else:
