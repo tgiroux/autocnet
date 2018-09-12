@@ -133,7 +133,10 @@ class CandidateGraph(nx.Graph):
         if sorted(self.edges()) != sorted(other.edges()):
             return False
         for s, d, e in self.edges.data('data'):
-            if not e == other.edges[s, d]['data']:
+            if s > d:
+                s, d = d, s
+            if not e == other.edges[(s, d)]['data']:
+                print('echeck')
                 return False
         return True
 

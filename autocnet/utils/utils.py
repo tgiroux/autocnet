@@ -71,8 +71,9 @@ def compare_dicts(d, o):
     >>> compare_dicts(d,o)
     True
     """
-    if o.keys() != d.keys():
-        return False
+    for k in o.keys():
+        if k not in d.keys():
+            return False
     for k, v in d.items():
         if v is None and o[k] is not None:
             return False
