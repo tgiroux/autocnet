@@ -17,12 +17,12 @@ from autocnet.matcher import subpixel as sp
 from autocnet.matcher import cpu_ring_matcher
 from autocnet.transformation import fundamental_matrix as fm
 from autocnet.transformation import homography as hm
-from autocnet import transformation
+from autocnet.transformation import spatial
 from autocnet.vis.graph_view import plot_edge, plot_node, plot_edge_decomposition, plot_matches
 from autocnet.cg import cg
 
 from plio.io.io_gdal import GeoDataset
-
+from csmapi import csmapi
 
 class Edge(dict, MutableMapping):
     """
@@ -228,8 +228,10 @@ class Edge(dict, MutableMapping):
         gnd = np.empty((len(coords), 3))
         # Project the points to the surface and reproject into latlon space
         for i in range(gnd.shape[0]):
-            gnd[i] = camera.imageToGround(coords[i][0], coords[i][1], 0)
-        lon, lat, alt = transformation.spatial.reproject(gnd.T, semimajor, semiminor,
+            ic = csmapi.ImageCoord(coords[i][0], coords[i][1])
+            ground = camera.imageToGround(ic, 0)
+            gnd[i] = [ground.x, ground.y, ground.z]
+        lon, lat, alt = spatial.reproject(gnd.T, semimajor, semiminor,
                                     'geocent', 'latlon')
         if srid:
             geoms = []
