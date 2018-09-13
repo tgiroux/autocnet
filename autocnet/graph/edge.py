@@ -201,11 +201,14 @@ class Edge(dict, MutableMapping):
         access to x,y easier as a join on the keypoints is not requires.
         """
         skps = self.get_keypoints(self.source, index=self.matches.source_idx)
-        self.matches.sort_values(by='source_idx')[['source_x', 'source_y']] = skps.sort_index().values
-
+        skps.reindex(self.matches['source_idx'])
+        self.matches['source_x'] = skps.values[:,0]
+        self.matches['source_y'] = skps.values[:,1]
         dkps = self.get_keypoints(self.destination, index=self.matches.destination_idx)
-        self.matches.sort_values(by='destination_idx')[['destination_x', 'destination_y']] = dkps.sort_index().values
-
+        dkps.reindex(self.matches['destination_idx'])
+        self.matches['destination_x'] = dkps.values[:,0]
+        self.matches['destination_y'] = dkps.values[:,1]
+        
     def project_matches(self, semimajor, semiminor, on='source', srid=None):
         """
         Project matches.
@@ -716,7 +719,6 @@ class Edge(dict, MutableMapping):
     def get_matches(self, clean_keys=[]): # pragma: no cover
         if self.matches.empty:
             return pd.DataFrame()
-
         self.add_coordinates_to_matches()
         matches, _ = self.clean(clean_keys=clean_keys)
         skps = matches[['source_x', 'source_y']]
