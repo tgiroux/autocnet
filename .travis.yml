@@ -5,10 +5,6 @@ branches:
 only:
   - dev
 
-env:
-  global:
-    - BINSTAR_USER: jlaura
-
 os:
   - linux
   - osx
@@ -16,6 +12,7 @@ os:
 env:
   - PYTHON_VERSION=3.5
   - PYTHON_VERSION=3.6
+  - PYTHON_VERSION=3.7
 
 before_install:
   # We do this conditionally because it saves us some downloading if the
