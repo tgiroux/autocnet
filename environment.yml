@@ -14,6 +14,7 @@ dependencies:
   - networkx
   - pillow
   - plio
+  - ncurses
   - geopandas
   - pytest
   - pytest-cov
