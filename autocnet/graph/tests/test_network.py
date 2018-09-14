@@ -40,6 +40,14 @@ def geo_graph():
     return network.CandidateGraph.from_adjacency(adjacency, basepath=basepath)
 
 @pytest.fixture()
+def reduced_geo():
+    basepath = get_path('Apollo15')
+    a = 'AS15-M-0297_crop.cub'
+    b = 'AS15-M-0298_crop.cub'
+    adjacency = {a:[b], b:[a]}
+    return network.CandidateGraph.from_adjacency(adjacency, basepath=basepath)
+
+@pytest.fixture()
 def disconnected_graph():
     return network.CandidateGraph.from_adjacency(get_path('adjacency.json'))
 
@@ -134,33 +142,29 @@ def test_from_adjacency():
         assert isinstance(e, edge.Edge)
         assert isinstance(g.nodes[s]['data'], node.Node)
 
-def test_add_node():
-    basepath = get_path('Apollo15')
-    a = 'AS15-M-0297_crop.cub'
-    b = 'AS15-M-0298_crop.cub'
-    c = 'AS15-M-0299_crop.cub'
-    adjacency = {a:[b],
-                 b:[a]}
-    g = network.CandidateGraph.from_adjacency(adjacency, basepath=basepath)
-
+def test_add_node(reduced_geo):
     # Test without "image_name" arg (networkx parent method)
-    g.add_node(2, data=node.Node(image_name=c,
+    c = 'AS15-M-0299_crop.cub'
+    basepath = get_path('Apollo15')
+    reduced_geo.add_node(2, data=node.Node(image_name=c,
                                     image_path=os.path.join(basepath, c),
                                     node_id=2))
-    assert len(g.nodes) == 3
-    assert g.node[2]["data"]["image_name"] == c
+    assert len(reduced_geo.nodes) == 3
+    assert reduced_geo.node[2]["data"]["image_name"] == c
 
+def test_add_node_by_name(reduced_geo):
     # Test with "image_name" (cg method)
-    g = network.CandidateGraph.from_adjacency(adjacency, basepath=basepath)
-    g.add_node(image_name=c, basepath=basepath)
-    assert len(g.nodes) == 3
-    assert g.node[2]["data"]["image_name"] == c
-    assert g.node[0].keys() == g.node[1].keys() == g.node[2].keys()
+    c = 'AS15-M-0299_crop.cub'
+    basepath = get_path('Apollo15')
+    reduced_geo.add_node(image_name=c, basepath=basepath)
+    assert len(reduced_geo.nodes) == 3
+    assert reduced_geo.node[2]["data"]["image_name"] == c
+    assert reduced_geo.node[0].keys() == reduced_geo.node[1].keys() == reduced_geo.node[2].keys()
 
+def test_add_node_nonexistent(geo_graph):
     # Test when "image_name" not found
-    node_len = len(g.nodes)
-    g.add_node(image_name="nonexistent.jpg")
-    assert len(g.nodes) == node_len
+    with pytest.warns(UserWarning):
+        geo_graph.add_node(image_name="nonexistent.jpg")
 
 def test_add_edge():
     basepath = get_path('Apollo15')
@@ -182,11 +186,11 @@ def test_add_edge():
     assert g.edges[1, 2]["data"].destination == g.node[2]["data"]
     assert g.edges[0, 1].keys() == g.edges[0, 2].keys() == g.edges[1, 2].keys()
 
-    # Test when adj img not found
-    g =  network.CandidateGraph.from_adjacency(adjacency, basepath=basepath)
-    edge_len = len(g.edges)
-    g.add_node(image_name=c, basepath=basepath, adjacency=["nonexistent.jpg"])
-    assert len(g.edges) == edge_len
+def test_add_edge_missing_img(reduced_geo):
+    c = 'AS15-M-0299_crop.cub'
+    basepath = get_path('Apollo15')
+    with pytest.warns(UserWarning):
+        reduced_geo.add_node(image_name=c, basepath=basepath, adjacency=["nonexistent.jpg"])
 
 def test_equal(candidategraph):
     cg = copy.deepcopy(candidategraph)
@@ -285,7 +289,7 @@ def test_minimum_spanning_tree():
     assert sorted(mst_graph.nodes()) == sorted(graph.nodes())
     assert len(mst_graph.edges()) == len(graph.edges())-5
 
-
+@pytest.mark.filterwarnings('ignore::UserWarning')
 def test_fromlist():
     mock_list = ['AS15-M-0295_SML.png', 'AS15-M-0296_SML.png', 'AS15-M-0297_SML.png',
                  'AS15-M-0298_SML.png', 'AS15-M-0299_SML.png', 'AS15-M-0300_SML.png']

@@ -63,6 +63,7 @@ def ransac_permute(ref_points, tar_points, tolerance_val, target_points):
     P. Sidiropoulos and J.-P. Muller, A systematic solution to multi-instrument co-registration of high-resolution planetary images to an orthorectified baseline, IEEE Transactions on Geoscience and Remote Sensing, 2017
     """
     n = len(ref_points)
+    # Build an n,n distance matrix to store pairwise point distances
     dist = np.zeros((n,n))
     for i in range(n):
         vr1 = ref_points[i]
@@ -83,12 +84,13 @@ def ransac_permute(ref_points, tar_points, tolerance_val, target_points):
 
             dist[i,j] = (dr[0]**2 + dr[1]**2)**0.5 / (dt[0]**2+dt[1]**2)**0.5
             dist[j,i] = dist[i,j]
+    # Compute min/max bounds for the tolerance
     minlim = 1 - tolerance_val
     maxlim = 1 + tolerance_val
 
     # Determine which points are within the tolerance
-    q1 = dist > minlim
-    q2 = dist < maxlim
+    q1 = dist >= minlim
+    q2 = dist <= maxlim
     q = (q1*q2).astype(np.int)
     # How many points are within the tolerance?
     s = np.sum(q, axis=1)
@@ -99,7 +101,7 @@ def ransac_permute(ref_points, tar_points, tolerance_val, target_points):
             for j in range(i):
                 m[i,j] = q[i].dot(q[j])
                 m[j,i] = m[i,j]
-        qm = m > target_points
+        qm = m >= target_points
         sqm = np.sum(qm, axis=-1)
         f = np.argmax(sqm)
         f2 = np.nonzero(qm[f])

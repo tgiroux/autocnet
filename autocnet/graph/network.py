@@ -27,7 +27,7 @@ from autocnet.io import network as io_network
 from autocnet.vis.graph_view import plot_graph, cluster_plot
 from autocnet.control import control
 
-np.warnings.filterwarnings('ignore')
+#np.warnings.filterwarnings('ignore')
 
 # The total number of pixels squared that can fit into the keys number of GB of RAM for SIFT.
 MAXSIZE = {0: None,
@@ -133,7 +133,9 @@ class CandidateGraph(nx.Graph):
         if sorted(self.edges()) != sorted(other.edges()):
             return False
         for s, d, e in self.edges.data('data'):
-            if not e == other.edges[s, d]['data']:
+            if s > d:
+                s, d = d, s
+            if not e == other.edges[(s, d)]['data']:
                 return False
         return True
 
@@ -421,7 +423,6 @@ class CandidateGraph(nx.Graph):
                    Location of the output file.  If the file exists,
                    features are appended.  Otherwise, the file is created.
         """
-
         self.apply(Node.save_features, args=(out_path,), on='node')
 
     def load_features(self, in_path, nodes=[], nfeatures=None, **kwargs):
@@ -1192,7 +1193,6 @@ class CandidateGraph(nx.Graph):
         matches = self.get_matches(clean_keys)
         cnet_lis = []
         for match in matches:
-            print(match.shape)
             for row in match.to_records():
                 edge = (row.source_image, row.destination_image)
                 source_key = (row.source_image, row.destination_image, row.source_idx)
