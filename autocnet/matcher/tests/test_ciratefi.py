@@ -63,7 +63,7 @@ def test_cifi_radii_too_large(template, search):
         ciratefi.cifi(template, search, 1.0, radii=[100], use_percentile=False)
 
 def test_cifi_bounds_error(template, search):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError), pytest.warns(UserWarning):
         ciratefi.cifi(template, search, -1.1, use_percentile=False)
 
 def test_cifi_radii_none_error(template, search):
@@ -99,7 +99,7 @@ def test_rafi_warning(template, search):
 def test_rafi_bounds_error(template, search):
     rafi_pixels = [(10, 10)]
     rafi_scales = np.ones(search.shape, dtype=float)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as f, pytest.warns(UserWarning) as g:
         ciratefi.rafi(template, search, rafi_pixels, rafi_scales, -1.1, use_percentile=False)
 
 def test_rafi_radii_list_none_error(template, search):

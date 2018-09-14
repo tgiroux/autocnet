@@ -284,8 +284,7 @@ class Node(dict, MutableMapping):
             keypoints = self.keypoints.loc[index][['x', 'y']]
 
         if homogeneous:
-            keypoints['homogeneous'] = 1
-
+            keypoints = keypoints.assign(homogeneous = 1)
         return keypoints
 
     def get_raw_keypoint_coordinates(self, index=slice(None)):

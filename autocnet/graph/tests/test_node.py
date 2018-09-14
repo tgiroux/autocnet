@@ -163,7 +163,7 @@ class TestNode(object):
         kpc = node.get_keypoint_coordinates(index=[2,4])
         assert len(kpc) == 2
         kpc = node.get_keypoint_coordinates(homogeneous=True)
-        assert (kpc.homogeneous == 1).all()
+        assert (kpc['homogeneous'] == 1).all()
 
     def test_get_raw_keypoint_coordinates(self, node):
         image = node.get_array()

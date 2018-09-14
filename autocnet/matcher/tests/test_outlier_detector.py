@@ -3,6 +3,8 @@ import sys
 import unittest
 import warnings
 
+import pytest
+
 import numpy as np
 import pandas as pd
 
@@ -92,5 +94,6 @@ class testSuppressionRanges(unittest.TestCase):
 
     def test_normal_distribution(self):
         df = pd.DataFrame(self.r.uniform(0,100,(500, 3)), columns=['x', 'y', 'strength'])
-        mask, k = cpu_outlier_detector.spatial_suppression(df, (0, 0, 100, 100), k = 15, xkey='x', ykey='y')
+        with pytest.warns(UserWarning):
+            mask, k = cpu_outlier_detector.spatial_suppression(df, (0, 0, 100, 100), k = 15, xkey='x', ykey='y')
         self.assertEqual(len(df[mask]), 17)
