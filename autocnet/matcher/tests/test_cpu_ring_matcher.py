@@ -42,3 +42,14 @@ def test_check_pidx_duplicates(arr, expected):
 ])
 def test_sift_match(a, b, threshold, expected):
     assert rm.sift_match(a, b, thresh=threshold) == expected    
+
+@pytest.mark.parametrize("x,y, eidx",[(np.array([[1,1],[2,2],[3,3], [4,4], [5,5]]),
+                                       np.array([[1.1,1.0],[1.9,1.95],[3,3], [-4,-4], [5,5]]),
+                                       np.array([[0,1,2,4]])),
+                                      (np.array([[1,1], [5,5]]),
+                                       np.array([[1,1], [3,3]]),
+                                       [])
+                                      ])
+def test_ransac_permut(x, y, eidx):
+    xp, yp, idx = rm.ransac_permute(x, y, 0.2, 2)
+    np.testing.assert_array_equal(idx, eidx)

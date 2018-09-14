@@ -136,7 +136,6 @@ class CandidateGraph(nx.Graph):
             if s > d:
                 s, d = d, s
             if not e == other.edges[(s, d)]['data']:
-                print('echeck')
                 return False
         return True
 
@@ -1194,7 +1193,6 @@ class CandidateGraph(nx.Graph):
         matches = self.get_matches(clean_keys)
         cnet_lis = []
         for match in matches:
-            print(match.shape)
             for row in match.to_records():
                 edge = (row.source_image, row.destination_image)
                 source_key = (row.source_image, row.destination_image, row.source_idx)
