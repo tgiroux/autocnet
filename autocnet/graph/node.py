@@ -16,7 +16,6 @@ from autocnet.cg import cg
 
 from autocnet.io import keypoints as io_keypoints
 
-from autocnet.matcher.add_depth import deepen_correspondences
 from autocnet.matcher import cpu_extractor as fe
 from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.cg.cg import convex_hull_ratio
@@ -211,7 +210,7 @@ class Node(dict, MutableMapping):
 
         max_x = self.geodata.raster_size[0]
         max_y = self.geodata.raster_size[1]
-
+        print(max_x, max_y)
         total_area = max_x * max_y
 
         return hull_area / total_area
@@ -328,17 +327,20 @@ class Node(dict, MutableMapping):
         concat_kps = pd.concat((self.keypoints, new_keypoints))
         concat_kps.reset_index(inplace=True, drop=True)
         concat_kps.drop_duplicates(inplace=True)
-        #descriptor_mask = descriptor_mask[count:]        
         # Removed duplicated and re-index the merged keypoints
-        
+
+        # Update the descriptors to be the same size as the keypoints, maintaining alignment        
         if self.descriptors is not None:
             concat = np.concatenate((self.descriptors, new_descriptors))
-            new_descriptors = concat[concat_kps.index.values]
+        else:
+            concat = new_descriptors
+        new_descriptors = concat[concat_kps.index.values]
         
         self.descriptors = new_descriptors
-        self.keypoints = concat_kps
+        self.keypoints = concat_kps.reset_index(drop=True)
         
         lkps = len(self.keypoints)
+
         assert lkps == len(self.descriptors)
 
         if lkps > 0:
