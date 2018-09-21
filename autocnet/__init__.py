@@ -1,8 +1,9 @@
 import os
 import warnings
 
-import autocnet
+from pkg_resources import get_distribution, DistributionNotFound
 
+import autocnet
 import autocnet.examples
 import autocnet.camera
 import autocnet.cg
@@ -12,7 +13,6 @@ import autocnet.matcher
 import autocnet.transformation
 import autocnet.utils
 
-from pkg_resources import get_distribution, DistributionNotFound
 try:
     _dist = get_distribution('autocnet')
     # Normalize case for Windows systems
