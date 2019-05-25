@@ -190,9 +190,4 @@ class TestNode(object):
             assert kpc.shape == (3,2)
             kpc = node.get_raw_keypoint_coordinates(-1)
             assert kpc.shape == (2,)
-
-    def test_footprint(self, geo_node, node_a):
-        # Esnure that a shapely compliant poly is being returned
-        assert isinstance(geo_node.footprint, LinearRing)
-        assert node_a.footprint == None
         
