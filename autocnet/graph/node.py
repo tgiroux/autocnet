@@ -515,7 +515,7 @@ class NetworkNode(Node):
 
             # Create the keypoints entry
             kps = Keypoints(path=kpspath, nkeypoints=0)
-            cam = self.create_camera()
+            cam = create_camera()
             try:
                 fp = self.footprint
             except:
@@ -525,8 +525,7 @@ class NetworkNode(Node):
                        path=kwargs['image_path'],
                        footprint_latlon=fp,
                        keypoints=kps,
-                       cameras=cam, 
-                       serial=self.isis_serial)
+                       cameras=cam)
             session = Session()
             session.add(i)
             session.commit()
@@ -613,7 +612,7 @@ class NetworkNode(Node):
         url = config['pfeffernusse']['url']
         response = requests.post(url, json={'label':label})
         response = response.json()
-        model_name = response.get('name_model', None)
+        model_name = response,get('name_model', None)
         if model_name is None:
             return
         isdpath = os.path.splitext(self['image_path'])[0] + '.json'
