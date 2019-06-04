@@ -33,7 +33,7 @@ from autocnet.graph import markov_cluster
 from autocnet.graph.edge import Edge, NetworkEdge
 from autocnet.graph.node import Node, NetworkNode
 from autocnet.io import network as io_network
-from autocnet.io.db.model import (Images, Keypoints, Matches, Cameras, 
+from autocnet.io.db.model import (Images, Keypoints, Matches, Cameras,
                                   Base, Overlay, Edges, Costs,
                                   Points, Measures)
 from autocnet.io.db.connection import new_connection, Parent
@@ -1298,7 +1298,7 @@ class NetworkCandidateGraph(CandidateGraph):
             d.parent = self
         for s, d, e in self.edges(data='data'):
             e.parent = self
-        
+
         redis = config.get('redis')
         if redis:
             self.processing_queue = redis['processing_queue']
@@ -1309,7 +1309,7 @@ class NetworkCandidateGraph(CandidateGraph):
         Setup a 2 queue redis connection for pushing and pulling work/results
         """
         conf = config['redis']
-        
+
         self.redis_queue = StrictRedis(host=conf['host'],
                                        port=conf['port'],
                                        db=0)
@@ -1324,7 +1324,7 @@ class NetworkCandidateGraph(CandidateGraph):
 
     def apply(self, function, on='edge', args=(), walltime='01:00:00', **kwargs):
         """
-        A mirror of the apply function from the standard CandidateGraph object. This implementation 
+        A mirror of the apply function from the standard CandidateGraph object. This implementation
         dispatches the job to the cluster as an independent operation instead of applying an arbitrary function
         locally.
 
@@ -1363,9 +1363,6 @@ class NetworkCandidateGraph(CandidateGraph):
         onobj = options[on]
 
         res = []
-        key = 1
-        if isinstance(on, EdgeView):
-            key = 2
 
         for job_counter, elem in enumerate(onobj.data('data')):
             # Determine if we are working with an edge or a node
@@ -1522,4 +1519,3 @@ AND i1.id < i2.id""".format(query_string)
         obj = cls.from_adjacency(adjacency, node_id_map=adjacency_lookup, config=config)
 
         return obj
-
