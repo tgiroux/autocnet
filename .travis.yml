@@ -1,3 +1,4 @@
+dist: trusty
 language: generic  # Since we use conda, just go generic
 sudo: false
 
@@ -23,10 +24,6 @@ addons:
   apt:
     packages:
     - postgresql-9.6-postgis-2.3
-
-before_script:
-  - psql -c 'create database travis_ci_test;' -U postgres
-  - psql -d travis_ci_test -c "CREATE EXTENSION postgis;"
   
 before_install:
   # We do this conditionally because it saves us some downloading if the
@@ -51,6 +48,10 @@ before_install:
   - conda env update -n test -f environment.yml
   - export PROJ_LIB=$CONDA_PREFIX/share/proj  
   - export autocnet_config=sample.yml
+
+before_script:
+  - psql -c 'create database travis_ci_test;' -U postgres
+  t- psql -d travis_ci_test -c "CREATE EXTENSION postgis;"
 
 script:
   - pytest autocnet tests
