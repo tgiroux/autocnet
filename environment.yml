@@ -16,6 +16,7 @@ dependencies:
   - numpy
   - opencv
   - pillow
+  - pip
   - pip:
     - redis
   - plio >= 1.1.0
