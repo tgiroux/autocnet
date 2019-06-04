@@ -15,9 +15,6 @@ matrix:
       dist: trusty
       env: PYTHON_VERSION=3.7
     
-env:
-  global:
-    - PGPORT=5433
 
 # Setup a postgresql instance w/postgis
 services:
