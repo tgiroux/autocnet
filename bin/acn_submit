@@ -3,17 +3,23 @@
 import copy
 import os
 import json
+import sys
 
 from redis import StrictRedis
 import yaml
 
-from autocnet_server.db import connection
-from autocnet_server.db.redis_queue import pop_computetime_push, finalize
-from autocnet_server.graph.graph import NetworkNode, NetworkEdge
+from autocnet.io.db import connection
+from autocnet.io.db.redis_queue import pop_computetime_push, finalize
+from autocnet.graph.node import NetworkNode
+from autocnet.graph.edge import NetworkEdge
 
 #Load the config file
-with open(os.environ['autocnet_config'], 'r') as f:
-    config = yaml.load(f)
+try:
+    with open(os.environ['autocnet_config'], 'r') as f:
+        config = yaml.load(f)
+except:
+    print("The 'autocnet_config' environment variable is not set.")
+    sys.exit()
 
 def main(msg, config):
     
