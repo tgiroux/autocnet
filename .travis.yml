@@ -1,3 +1,4 @@
+language: generic
 sudo: true
 
 branches:
@@ -50,7 +51,12 @@ before_install:
   # Install dependencies
   - conda env update -n test -f environment.yml
   - export PROJ_LIB=$CONDA_PREFIX/share/proj  
-
+  
+  # Stop/Start postgresql
+  - sudo /etc/init.d/postgresql stop
+  - sleep 3
+  - sudo /ect/init.d/postgresql start
+  
   # Setup the database user
   - sudo -u postgres psql -c "CREATE USER testuser WITH PASSWORD 'password'"
   - sudo -u postgres psql -c "ALTER ROLE testuser SUPERUSER"
