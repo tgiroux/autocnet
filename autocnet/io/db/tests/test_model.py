@@ -19,7 +19,6 @@ def session(tables, request):
     
     return session
 
-
 def test_keypoints_exists(tables):
     assert model.Keypoints.__tablename__ in tables
 
@@ -38,15 +37,23 @@ def test_cameras_exists(tables):
 def test_images_exists(tables):
     assert model.Images.__tablename__ in tables
 
-def test_create_image():
+def test_create_image_default(session):
     i = model.Images()
     session.add(i)
     session.commit()
-    res_i = session.query(Images).first()
+    res_i = session.query(model.Images).first()
     print(i.id)
     print(res_i.id)
-    session.close()
 
+def test_image_unique(session):
+    serial = 'abcde'
+    i = model.Images(serial=serial)
+    session.add(i)
+    session.commit()
+    i2 = model.Images(serial=serial)
+    session.add(i2)
+    session.commit(i2)
+    
 def test_overlay_exists(tables):
     assert model.Overlay.__tablename__ in tables
 
