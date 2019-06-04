@@ -62,11 +62,6 @@ before_install:
   # Setup autocnet to connect to the db
   - export autocnet_config=sample.yml
 
-before_script:
-  # Create the database
-  - PGPASSWORD=password psql -U testuser -c "create database travis_ci_test;"
-  - PGPASSWORD=password psql -U testuser -d travis_ci_test -c "CREATE EXTENSION postgis;"
-
 script:
   - pytest autocnet tests
 
