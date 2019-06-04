@@ -27,10 +27,6 @@ addons:
   apt:
     packages:
     - postgresql-9.6-postgis-2.3
-
-before_script:
-  - psql -c 'create database travis_ci_test;' -U postgres
-  - psql -U postgres -c "create extension postgis"
   
 before_install:
   # We do this conditionally because it saves us some downloading if the
@@ -55,12 +51,12 @@ before_install:
   - conda env update -n test -f environment.yml
   - export PROJ_LIB=$CONDA_PREFIX/share/proj  
 
-  # Setup the database user
-  - psql -h /tmp -c "CREATE USER testuser WITH PASSWORD 'password'" -U postgres
-  - psql -h /tmp -c "ALTER ROLE testuser SUPERUSER" -U postgres
-
   # Setup autocnet to connect to the db
   - export autocnet_config=sample.yml
+
+before_script:
+  - psql -c 'create database travis_ci_test;' -U postgres
+  - psql -U postgres -c "create extension postgis"
 
 script:
   - pytest autocnet tests
