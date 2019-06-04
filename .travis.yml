@@ -58,8 +58,8 @@ before_install:
   - sudo /etc/init.d/postgresql start
 
   # Setup the database user
-  - sudo -u postgres psql -c "CREATE USER testuser WITH PASSWORD 'password'"
-  - sudo -u postgres psql -c "ALTER ROLE testuser SUPERUSER"
+  - psql -c "CREATE USER testuser WITH PASSWORD 'password'" -U postgres
+  - psql -c "ALTER ROLE testuser SUPERUSER" -U postgres
 
   # Setup autocnet to connect to the db
   - export autocnet_config=sample.yml
