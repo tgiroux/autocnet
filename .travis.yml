@@ -11,8 +11,6 @@ os:
   - osx
 
 env:
-  global:
-    - PGPORT=5433
   - PYTHON_VERSION=3.5
   - PYTHON_VERSION=3.6
   - PYTHON_VERSION=3.7
@@ -21,12 +19,10 @@ env:
 services:
   - postgresql
 addons:
-  postgresql: '10'
+  postgresql: 9.6
   apt:
     packages:
-      - postgresql-10-postgis-2.4
-      - postgresql-10-postgis-2.4-scripts
-      - postgresql-client-10
+    - postgresql-9.6-postgis-2.3
   
 before_install:
   # We do this conditionally because it saves us some downloading if the
@@ -50,6 +46,12 @@ before_install:
   # Install dependencies
   - conda env update -n test -f environment.yml
   - export PROJ_LIB=$CONDA_PREFIX/share/proj  
+
+  # Setup the database user
+  - sudo -u postgres psql -c "CREATE USER testuser WITH PASSWORD 'password'"
+  - sudo -u postgres psql -c "ALTER ROLE testuser SUPERUSER"
+
+  # Setup autocnet to connect to the db
   - export autocnet_config=sample.yml
 
 before_script:
