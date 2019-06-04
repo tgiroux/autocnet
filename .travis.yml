@@ -1,6 +1,5 @@
-dist: trusty
 language: generic  # Since we use conda, just go generic
-sudo: false
+sudo: true
 
 branches:
   only:
@@ -12,6 +11,8 @@ os:
   - osx
 
 env:
+  global:
+    - PGPORT=5433
   - PYTHON_VERSION=3.5
   - PYTHON_VERSION=3.6
   - PYTHON_VERSION=3.7
@@ -20,10 +21,12 @@ env:
 services:
   - postgresql
 addons:
-  postgresql: 9.6
+  postgresql: '10'
   apt:
     packages:
-    - postgresql-9.6-postgis-2.3
+      - postgresql-10-postgis-2.4
+      - postgresql-10-postgis-2.4-scripts
+      - postgresql-client-10
   
 before_install:
   # We do this conditionally because it saves us some downloading if the
@@ -50,8 +53,8 @@ before_install:
   - export autocnet_config=sample.yml
 
 before_script:
-  - psql -c 'create database travis_ci_test;' -U postgres
-  t- psql -d travis_ci_test -c "CREATE EXTENSION postgis;"
+  - psql -c "create database travis_ci_test;" -U postgres
+  - psql -d travis_ci_test -c "CREATE EXTENSION postgis;" -U postgres
 
 script:
   - pytest autocnet tests

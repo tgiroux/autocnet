@@ -19,8 +19,8 @@ database:
     username: 'postgres'
     password: ''
     host: 'localhost'
-    port: 5432 # This is a mapped port when postgresql is containerized, e.g., 8085
-    pgbouncer_port: 5432  # This is normally a different port, e.g., 8083
+    port: 5433 # This is a mapped port when postgresql is containerized, e.g., 8085
+    pgbouncer_port: 5433  # This is normally a different port, e.g., 8083
     # The name of the database to connect to.  Tables will be created inside this DB.
     name: 'travis_ci_test' # This needs to be all lowercase for PostGreSQL!
     # The number of seconds to wait while attemping to connect to the DB.
