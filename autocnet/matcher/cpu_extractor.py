@@ -1,7 +1,6 @@
 import warnings
 
-import autocnet
-import cv2
+from cv2 import ORB_create, FastFeatureDetector_create
 import numpy as np
 import pandas as pd
 from autocnet.utils.utils import bytescale
@@ -49,10 +48,10 @@ def extract_features(array, extractor_method='sift', extractor_parameters={}):
     descriptors : ndarray
                   Of descriptors
     """
-    detectors = {'fast': cv2.FastFeatureDetector_create,
+    detectors = {'fast': FastFeatureDetector_create,
                  'sift': SIFT,
                  'surf': SURF,
-                 'orb': cv2.ORB_create}
+                 'orb' : ORB_create}
 
     if extractor_method == 'vlfeat' and vlfeat != True:
         raise ImportError('VLFeat is not available.  Please install vlfeat or use a different extractor.')

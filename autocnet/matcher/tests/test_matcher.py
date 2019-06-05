@@ -3,8 +3,6 @@ import sys
 import unittest
 import warnings
 
-import cv2
-
 from .. import cpu_matcher
 from autocnet.examples import get_path
 from autocnet.graph.network import CandidateGraph
