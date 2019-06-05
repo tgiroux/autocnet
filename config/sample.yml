@@ -16,13 +16,13 @@ cluster:
 ### Database Configuration ###
 database:
     type: 'postgresql'
-    username: 'postgres'
-    password: ''
-    host: 'localhost'
-    port: 5432 # This is a mapped port when postgresql is containerized, e.g., 8085
-    pgbouncer_port: 5432  # This is normally a different port, e.g., 8083
+    username: 'sample'
+    password: 'sample'
+    host: 'smalls'
+    port: 8085
+    pgbouncer_port: 8083
     # The name of the database to connect to.  Tables will be created inside this DB.
-    name: 'travis_ci_test' # This needs to be all lowercase for PostGreSQL!
+    name: 'jelysiumtest' # This needs to be all lowercase for PostGreSQL!
     # The number of seconds to wait while attemping to connect to the DB.
     timeout: 500
 
@@ -41,7 +41,7 @@ redis:
 
 ### Spatial Reference Setup ###
 spatial:
-    srid: 4326  # 949900; this is a custom SRID for Mars. For testing we use WGS84.
+    srid: 949900
     semimajor_rad: 3396190  # in meters
     semiminor_rad: 3376200  # in meters
     proj4_str: '+proj:longlat +a:3396190 +b:3376200 +no_defs'
