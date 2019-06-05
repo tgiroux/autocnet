@@ -16,8 +16,8 @@ cluster:
 ### Database Configuration ###
 database:
     type: 'postgresql'
-    username: 'testuser'
-    password: 'password'
+    username: 'postgres'
+    password: ''
     host: 'localhost'
     port: 5432 # This is a mapped port when postgresql is containerized, e.g., 8085
     pgbouncer_port: 5432  # This is normally a different port, e.g., 8083
