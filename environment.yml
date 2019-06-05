@@ -14,7 +14,7 @@ dependencies:
   - ncurses
   - networkx
   - numpy
-  - opencv < 4
+  - opencv <= 3.5
   - pillow
   - pip:
     - redis
