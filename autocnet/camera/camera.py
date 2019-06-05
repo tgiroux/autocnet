@@ -1,6 +1,6 @@
 import numpy as np
 from autocnet.camera.utils import crossform
-import cv2
+from cv2 import triangulatePoints
 
 
 
@@ -102,7 +102,7 @@ def triangulate(pt, pt1, p, p1):
     if pt1.shape[0] != 3:
         pt1 = pt1.T
 
-    X = cv2.triangulatePoints(p, p1, pt[:2], pt1[:2])
+    X = triangulatePoints(p, p1, pt[:2], pt1[:2])
     X /= X[3] # Homogenize
     return X
 

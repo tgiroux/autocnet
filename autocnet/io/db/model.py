@@ -16,9 +16,11 @@ from sqlalchemy.types import TypeDecorator
 from geoalchemy2 import Geometry
 from geoalchemy2.shape import to_shape
 
-from autocnet import engine, Session
+from autocnet import engine, Session, config
 
 Base = declarative_base()
+
+srid = config['spatial']['srid']
 
 class JsonEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -116,7 +118,7 @@ class Keypoints(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     image_id = Column(Integer, ForeignKey("images.id", ondelete="CASCADE"))
     convex_hull_image = Column(Geometry('POLYGON'))
-    convex_hull_latlon = Column(Geometry('POLYGON', srid=949900))
+    convex_hull_latlon = Column(Geometry('POLYGON', srid=srid))
     path = Column(String)
     nkeypoints = Column(Integer)
 
@@ -159,7 +161,7 @@ class Matches(Base):
     destination_idx = Column(Integer, nullable=False)
     lat = Column(Float)
     lon = Column(Float)
-    geom = Column(Geometry('POINT', dimension=2, srid=949900, spatial_index=True))
+    geom = Column(Geometry('POINT', dimension=2, srid=srid, spatial_index=True))
     source_x = Column(Float)
     source_y = Column(Float)
     destination_x = Column(Float)
@@ -184,7 +186,7 @@ class Images(Base):
     path = Column(String)
     serial = Column(String, unique=True)
     active = Column(Boolean)
-    footprint_latlon = Column(Geometry('MultiPolygon', srid=949900, dimension=2, spatial_index=True))
+    footprint_latlon = Column(Geometry('MultiPolygon', srid=srid, dimension=2, spatial_index=True))
     footprint_bodyfixed = Column(Geometry('MULTIPOLYGON', dimension=2))
     #footprint_bodyfixed = Column(Geometry('POLYGON',dimension=3))
 
@@ -204,24 +206,12 @@ class Images(Base):
                 'footprint_latlon':footprint,
                 'footprint_bodyfixed':self.footprint_bodyfixed})
 
-"""class Network(Base):
-    __tablename__ = 'network'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    #TODO: Document that images on delete will CASCADE into all other tables
-    image_id = Column(Integer, ForeignKey("images.id", ondelete="CASCADE"))  # Links back to the source image
-    match_id = Column(Integer)
-    point_id = Column(String) # User defined point identifier
-    keypoint_id = Column(Integer)  # id to link to a keypoint in the correct file
-    x = Column(Float)
-    y = Column(Float)
-    geom = Column(Geometry('POINTZ', dimension=3, srid=949900, spatial_index=True))"""
-    
 class Overlay(Base):
     __tablename__ = 'overlay'
     id = Column(Integer, primary_key=True, autoincrement=True)
     intersections = Column(ARRAY(Integer))
     #geom = Column(Geometry(geometry_type='POLYGON', management=True))  # sqlite
-    geom = Column(Geometry('POLYGON', srid=949900, dimension=2, spatial_index=True))  # postgresql
+    geom = Column(Geometry('POLYGON', srid=srid, dimension=2, spatial_index=True))  # postgresql
 
 
 class PointType(enum.IntEnum):
@@ -237,7 +227,7 @@ class Points(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     pointtype = Column(IntEnum(PointType), nullable=False)  # 2, 3, 4 - Could be an enum in the future, map str to int in a decorator
     identifier = Column(String, unique=True)
-    geom = Column(Geometry('POINT', srid=949900, dimension=2, spatial_index=True))
+    geom = Column(Geometry('POINT', srid=srid, dimension=2, spatial_index=True))
     active = Column(Boolean, default=True)
     apriorix = Column(Float)
     aprioriy = Column(Float)
