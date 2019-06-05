@@ -9,10 +9,8 @@ branches:
 matrix:
   include:
     - os: linux
-      dist: trusty
       env: PYTHON_VERSION=3.6
     - os: linux
-      dist: trusty
       env: PYTHON_VERSION=3.7
     
 
