@@ -37,6 +37,7 @@ def test_cameras_exists(tables):
 def test_images_exists(tables):
     assert model.Images.__tablename__ in tables
 
+"""
 def test_create_image_default(session):
     i = model.Images()
     session.add(i)
@@ -52,8 +53,9 @@ def test_image_unique(session):
     session.commit()
     i2 = model.Images(serial=serial)
     session.add(i2)
-    session.commit(i2)
-    
+    session.commit()
+"""
+
 def test_overlay_exists(tables):
     assert model.Overlay.__tablename__ in tables
 
