@@ -60,7 +60,7 @@ install:
   - export autocnet_config=sample.yml
 
 script:
-  - pytest autocnet
+  - pytest -v autocnet
 
 after_success:
   - coveralls
