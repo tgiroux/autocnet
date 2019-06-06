@@ -620,8 +620,8 @@ class NetworkNode(Node):
         try:
             with open(isdpath, 'w') as f:
                 json.dump(response, f)
-        except:
-            warnings.warn('Failed to write JSON ISD for image {}'.format(self['image_path']))
+        except Exception as e:
+            warnings.warn('Failed to write JSON ISD for image {}.\n{}'.format(self['image_path'], e))
         isd = csmapi.Isd(self['image_path'])
         plugin = csmapi.Plugin.findPlugin('UsgsAstroPluginCSM')
         self._camera = plugin.constructModelFromISD(isd, model_name)
