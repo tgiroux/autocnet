@@ -12,6 +12,7 @@ import geoalchemy2
 import shapely
 import sqlalchemy
 
+<<<<<<< HEAD
 def compute_overlaps(sql='(SELECT * FROM images) AS images'):
     """
     For the candidate graph, compute the overlapping polygons that
@@ -65,6 +66,8 @@ SELECT ST_AsEWKB(geom) AS geom FROM ST_Dump((
     res.delete(synchronize_session=False)
     session.commit()
     session.close()
+=======
+>>>>>>> 4909a1b4ce803db0bab943ed1aa1716e757df5bc
 
 def place_points_in_overlaps(cg, size_threshold=0.0007, reference=None, height=0,
                              iterative_phase_kwargs={'size':71}):
@@ -103,15 +106,16 @@ def place_points_in_overlaps(cg, size_threshold=0.0007, reference=None, height=0
     lla = pyproj.Proj(proj='latlon', a=semi_major, b=semi_minor)
 
     # TODO: This should be a passable query where we can subset.
-    for o in session.query(Overlay.id, Overlay.geom, Overlay.overlaps).\
+    for o in session.query(Overlay.id, Overlay.geom, Overlay.intersections).\
              filter(sqlalchemy.func.ST_Area(Overlay.geom) >= size_threshold):
 
         valid = compgeom.distribute_points_in_geom(geoalchemy2.shape.to_shape(o.geom))
         if not valid:
             continue
-        overlaps = o.overlaps
 
-        if overlaps == None:
+        overlaps = o.intersections
+
+        if intersections == None:
             continue
 
         if reference is None:

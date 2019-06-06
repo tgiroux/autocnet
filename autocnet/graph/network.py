@@ -33,7 +33,7 @@ from autocnet.graph import markov_cluster
 from autocnet.graph.edge import Edge, NetworkEdge
 from autocnet.graph.node import Node, NetworkNode
 from autocnet.io import network as io_network
-from autocnet.io.db.model import (Images, Keypoints, Matches, Cameras, 
+from autocnet.io.db.model import (Images, Keypoints, Matches, Cameras,
                                   Base, Overlay, Edges, Costs,
                                   Points, Measures)
 from autocnet.io.db.connection import new_connection, Parent
@@ -1298,7 +1298,7 @@ class NetworkCandidateGraph(CandidateGraph):
             d.parent = self
         for s, d, e in self.edges(data='data'):
             e.parent = self
-        
+
         redis = config.get('redis')
         if redis:
             self.processing_queue = redis['processing_queue']
@@ -1309,7 +1309,7 @@ class NetworkCandidateGraph(CandidateGraph):
         Setup a 2 queue redis connection for pushing and pulling work/results
         """
         conf = config['redis']
-        
+
         self.redis_queue = StrictRedis(host=conf['host'],
                                        port=conf['port'],
                                        db=0)
@@ -1324,7 +1324,7 @@ class NetworkCandidateGraph(CandidateGraph):
 
     def apply(self, function, on='edge', args=(), walltime='01:00:00', **kwargs):
         """
-        A mirror of the apply function from the standard CandidateGraph object. This implementation 
+        A mirror of the apply function from the standard CandidateGraph object. This implementation
         dispatches the job to the cluster as an independent operation instead of applying an arbitrary function
         locally.
 
@@ -1363,9 +1363,6 @@ class NetworkCandidateGraph(CandidateGraph):
         onobj = options[on]
 
         res = []
-        key = 1
-        if isinstance(on, EdgeView):
-            key = 2
 
         for job_counter, elem in enumerate(onobj.data('data')):
             # Determine if we are working with an edge or a node
@@ -1427,54 +1424,6 @@ class NetworkCandidateGraph(CandidateGraph):
         """
         for i, n in self.nodes(data='data'):
             n.generate_vrt(**kwargs)
-
-    def compute_overlaps(self):
-        """
-        For the candidate graph, compute the overlapping polygons that
-        comprise the entire candidate graph / footprint map. Each overlap
-        includes an 'overlaps' attribute/column that includes a list of the
-        footprint polygons that have contributed to given overlap.
-
-        """
-        query = """
-    SELECT ST_AsEWKB(geom) AS geom FROM ST_Dump((
-        SELECT ST_Polygonize(the_geom) AS the_geom FROM (
-            SELECT ST_Union(the_geom) AS the_geom FROM (
-                SELECT ST_ExteriorRing((ST_DUMP(footprint_latlon)).geom) AS the_geom
-                FROM images) AS lines
-        ) AS noded_lines
-    )
-)"""
-        session = Session()
-        oquery = session.query(Overlay)
-        iquery = session.query(Images)
-
-        rows = []
-        srid = config['spatial']['srid']
-        for q in engine.execute(query).fetchall():
-            overlaps = []
-            b = bytes(q['geom'])
-            qgeom = shapely.wkb.loads(b)
-            res = iquery.filter(Images.footprint_latlon.ST_Intersects(geoalchemy2.shape.from_shape(qgeom, srid=srid)))
-            for i in res:
-                fgeom = geoalchemy2.shape.to_shape(i.footprint_latlon)
-                area = qgeom.intersection(fgeom).area
-                if area < 1e-6:
-                    continue
-                overlaps.append(i.id)
-            o = Overlay(geom=f'SRID={srid};{qgeom.qkt}', overlaps=overlaps)
-            res = oquery.filter(Overlay.overlaps == o.overlaps).first()
-            if res is None:
-                rows.append(o)
-
-        session.bulk_save_objects(rows)
-        session.commit()
-
-        # If an overlap has only 1 entry, it is a sliver and we want to remove it.
-        res = oquery.filter(sqlalchemy.func.array_length(Overlay.overlaps, 1) <= 1)
-        res.delete(synchronize_session=False)
-        session.commit()
-        session.close()
 
     def to_isis(self, path, flistpath=None,         sql = """
 SELECT points.id, measures.serial, points.pointtype, measures.sample, measures.line, measures.measuretype,
@@ -1570,4 +1519,3 @@ AND i1.id < i2.id""".format(query_string)
         obj = cls.from_adjacency(adjacency, node_id_map=adjacency_lookup, config=config)
 
         return obj
-

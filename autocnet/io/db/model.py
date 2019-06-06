@@ -16,9 +16,21 @@ from sqlalchemy.types import TypeDecorator
 from geoalchemy2 import Geometry
 from geoalchemy2.shape import to_shape
 
-from autocnet import engine, Session
+from autocnet import engine, Session, config
 
 Base = declarative_base()
+
+# Default to mars if no config is set
+spatial = config.get('spatial', {'srid': 949900})
+srid = spatial['srid']
+
+class BaseMixin(object):
+    @classmethod
+    def create(cls, session, **kw):
+        obj = cls(**kw)
+        session.add(obj)
+        session.commit()
+        return obj
 
 class JsonEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -33,26 +45,6 @@ class JsonEncoder(json.JSONEncoder):
         if isinstance(obj, set):
             return list(obj)
         return json.JSONEncoder.default(self, obj)
-
-attr_dict = {'__tablename__':None,
-             '__table_args__': {'useexisting':True},
-             'id':Column(Integer, primary_key=True, autoincrement=True),
-             'name':Column(String),
-             'path':Column(String),
-             'footprint':Column(Geometry('POLYGON')),
-             'keypoint_path':Column(String),
-             'nkeypoints':Column(Integer),
-             'kp_min_x':Column(Float),
-             'kp_max_x':Column(Float),
-             'kp_min_y':Column(Float),
-             'kp_max_y':Column(Float)}
-
-def create_table_cls(name, clsname):
-    attrs = attr_dict
-    attrs['__tablename__'] = name
-    return type(clsname, (Base,), attrs)
-
-Base = declarative_base()
 
 class IntEnum(TypeDecorator):
     """
@@ -70,7 +62,7 @@ class IntEnum(TypeDecorator):
         return self._enumtype(value)
 
 class ArrayType(TypeDecorator):
-    """ 
+    """
     Sqlite does not support arrays. Therefore, use a custom type decorator.
 
     See http://docs.sqlalchemy.org/en/latest/core/types.html#sqlalchemy.types.TypeDecorator
@@ -93,7 +85,7 @@ class Json(TypeDecorator):
     See http://docs.sqlalchemy.org/en/latest/core/types.html#sqlalchemy.types.TypeDecorator
     """
     impl = String
-    
+
     @property
     def python_type(self):
         return object
@@ -111,12 +103,12 @@ class Json(TypeDecorator):
             return None
 
 
-class Keypoints(Base):
+class Keypoints(BaseMixin, Base):
     __tablename__ = 'keypoints'
     id = Column(Integer, primary_key=True, autoincrement=True)
     image_id = Column(Integer, ForeignKey("images.id", ondelete="CASCADE"))
     convex_hull_image = Column(Geometry('POLYGON'))
-    convex_hull_latlon = Column(Geometry('POLYGON', srid=949900))
+    convex_hull_latlon = Column(Geometry('POLYGON', srid=srid))
     path = Column(String)
     nkeypoints = Column(Integer)
 
@@ -132,7 +124,7 @@ class Keypoints(Base):
                            'path':self.path,
                            'nkeypoints':self.nkeypoints})
 
-class Edges(Base):
+class Edges(BaseMixin, Base):
     __tablename__ = 'edges'
     id = Column(Integer, primary_key=True, autoincrement=True)
     source = Column(Integer)
@@ -142,12 +134,12 @@ class Edges(Base):
     active = Column(Boolean)
     masks = Column(Json())
 
-class Costs(Base):
+class Costs(BaseMixin, Base):
     __tablename__ = 'costs'
     match_id = Column(Integer, ForeignKey("matches.id", ondelete="CASCADE"), primary_key=True)
     _cost = Column(JSONB)
 
-class Matches(Base):
+class Matches(BaseMixin, Base):
     __tablename__ = 'matches'
     id = Column(Integer, primary_key=True, autoincrement=True)
     point_id = Column(Integer)
@@ -159,7 +151,7 @@ class Matches(Base):
     destination_idx = Column(Integer, nullable=False)
     lat = Column(Float)
     lon = Column(Float)
-    geom = Column(Geometry('POINT', dimension=2, srid=949900, spatial_index=True))
+    geom = Column(Geometry('POINT', dimension=2, srid=srid, spatial_index=True))
     source_x = Column(Float)
     source_y = Column(Float)
     destination_x = Column(Float)
@@ -170,20 +162,21 @@ class Matches(Base):
     original_destination_y = Column(Float)
 
 
-class Cameras(Base):
+class Cameras(BaseMixin, Base):
     __tablename__ = 'cameras'
     id = Column(Integer, primary_key=True, autoincrement=True)
     image_id = Column(Integer, ForeignKey("images.id", ondelete="CASCADE"), unique=True)
     camera = Column(Json())
 
-class Images(Base):
+class Images(BaseMixin, Base):
     __tablename__ = 'images'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, unique=True)
-    path = Column(String, unique=True)
+    name = Column(String)
+    path = Column(String)
+    serial = Column(String, unique=True)
     active = Column(Boolean)
-    footprint_latlon = Column(Geometry('MultiPolygon', srid=949900, dimension=2, spatial_index=True))
+    footprint_latlon = Column(Geometry('MultiPolygon', srid=srid, dimension=2, spatial_index=True))
     footprint_bodyfixed = Column(Geometry('MULTIPOLYGON', dimension=2))
     #footprint_bodyfixed = Column(Geometry('POLYGON',dimension=3))
 
@@ -203,24 +196,12 @@ class Images(Base):
                 'footprint_latlon':footprint,
                 'footprint_bodyfixed':self.footprint_bodyfixed})
 
-"""class Network(Base):
-    __tablename__ = 'network'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    #TODO: Document that images on delete will CASCADE into all other tables
-    image_id = Column(Integer, ForeignKey("images.id", ondelete="CASCADE"))  # Links back to the source image
-    match_id = Column(Integer)
-    point_id = Column(String) # User defined point identifier
-    keypoint_id = Column(Integer)  # id to link to a keypoint in the correct file
-    x = Column(Float)
-    y = Column(Float)
-    geom = Column(Geometry('POINTZ', dimension=3, srid=949900, spatial_index=True))"""
-    
-class Overlay(Base):
+class Overlay(BaseMixin, Base):
     __tablename__ = 'overlay'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    overlaps = Column(ARRAY(Integer))
+    intersections = Column(ARRAY(Integer))
     #geom = Column(Geometry(geometry_type='POLYGON', management=True))  # sqlite
-    geom = Column(Geometry('POLYGON', srid=949900, dimension=2, spatial_index=True))  # postgresql
+    geom = Column(Geometry('POLYGON', srid=srid, dimension=2, spatial_index=True))  # postgresql
 
 
 class PointType(enum.IntEnum):
@@ -231,12 +212,12 @@ class PointType(enum.IntEnum):
     constrained = 3
     fixed = 4
 
-class Points(Base):
+class Points(BaseMixin, Base):
     __tablename__ = 'points'
     id = Column(Integer, primary_key=True, autoincrement=True)
     pointtype = Column(IntEnum(PointType), nullable=False)  # 2, 3, 4 - Could be an enum in the future, map str to int in a decorator
     identifier = Column(String, unique=True)
-    geom = Column(Geometry('POINT', srid=949900, dimension=2, spatial_index=True))
+    geom = Column(Geometry('POINT', srid=srid, dimension=2, spatial_index=True))
     active = Column(Boolean, default=True)
     apriorix = Column(Float)
     aprioriy = Column(Float)
@@ -256,7 +237,7 @@ class MeasureType(enum.IntEnum):
     pixelregistered = 2
     subpixelregistered = 3
 
-class Measures(Base):
+class Measures(BaseMixin, Base):
     __tablename__ = 'measures'
     id = Column(Integer,primary_key=True, autoincrement=True)
     pointid = Column(Integer, ForeignKey('points.id'), nullable=False)
@@ -274,7 +255,6 @@ class Measures(Base):
     samplesigma = Column(Float)
     linesigma = Column(Float)
     rms = Column(Float)
-
 
 if Session:
     from autocnet.io.db.triggers import valid_point_function, valid_point_trigger

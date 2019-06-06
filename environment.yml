@@ -10,12 +10,15 @@ dependencies:
   - geoalchemy2
   - geopandas
   - imageio
+  - ipykernel
+  - jupyter
   - knoten
   - ncurses
   - networkx
   - numpy
-  - opencv
+  - opencv <= 3.5
   - pillow
+  - pip
   - pip:
     - redis
   - plio >= 1.1.0
