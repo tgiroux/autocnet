@@ -701,6 +701,7 @@ class Edge(dict, MutableMapping):
     def get_match_coordinates(self, clean_keys=[]):
         matches = self.get_matches(clean_keys=clean_keys)
 
+        # no matches, return empty dataframe
         if matches.empty:
             return pd.DataFrame(), pd.DataFrame()
 
@@ -1007,6 +1008,9 @@ class NetworkEdge(Edge):
         """
         source = self.source['node_id']
         destin = self.destination['node_id']
+
+        if source > destin:
+            source, destin = destin, source
 
         q = Session().query(Points.id,
                   Points.pointtype,
