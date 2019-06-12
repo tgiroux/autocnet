@@ -70,6 +70,8 @@ spatial:
     # A compliant proj4 string. Checkout http://spatialreference.org for examples 
     # for planetary bodies.
     proj4_str: '+proj:longlat +a:3396190 +b:3376200 +no_defs'
+    # DEM used to generate height values for projection
+    dem: '/scratch/jlaura/mars/molaMarsPlanetaryRadius.cub'
 
 ### Working Directories ###
 directories:

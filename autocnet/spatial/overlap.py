@@ -10,13 +10,15 @@ import numpy as np
 import pyproj
 import shapely
 import sqlalchemy
+from plio.io.io_gdal import GeoDataset
 
-
-def place_points_in_overlaps(cg, size_threshold=0.0007, reference=None, height=0,
+def place_points_in_overlaps(cg, size_threshold=0.0007, reference=None,
                              iterative_phase_kwargs={'size':71}):
     """
     Given a geometry, place points into the geometry by back-projecing using
     a sensor model.compgeom
+
+    The DEM specified in the config file will be used to calculate height point elevations.
 
     TODO: This shoucompgeomn once that package is stable.
 
@@ -31,10 +33,6 @@ def place_points_in_overlaps(cg, size_threshold=0.0007, reference=None, height=0
     reference : int
                 the i.d. of a reference node to use when placing points. If not
                 speficied, this is the node with the lowest id
-
-    height : numeric
-             The distance (in meters) above or below the aeroid (meters above or
-             below the BCBF spheroid).
     """
     if not Session:
         warnings.warn('This function requires a database connection configured via an autocnet config file.')
@@ -47,7 +45,9 @@ def place_points_in_overlaps(cg, size_threshold=0.0007, reference=None, height=0
     semi_minor = config['spatial']['semiminor_rad']
     ecef = pyproj.Proj(proj='geocent', a=semi_major, b=semi_minor)
     lla = pyproj.Proj(proj='latlon', a=semi_major, b=semi_minor)
-
+    dem = config['spatial']['dem']
+    gd = GeoDataset(dem)
+    
     # TODO: This should be a passable query where we can subset.
     for o in session.query(Overlay).\
              filter(sqlalchemy.func.ST_Area(Overlay.geom) >= size_threshold):
@@ -68,12 +68,18 @@ def place_points_in_overlaps(cg, size_threshold=0.0007, reference=None, height=0
         overlaps.remove(source)
         source = cg.node[source]['data']
         source_camera = source.camera
+
         for v in valid:
             point = Points(geom=shapely.geometry.Point(*v),
                            pointtype=2) # Would be 3 or 4 for ground
 
+            # Calculate the height, the distance (in meters) above or 
+            # below the aeroid (meters above or below the BCBF spheroid).
+            px, py = gd.latlon_to_pixel(v[1], v[0])
+            height = gd.read_array(1, [px, py, 1, 1])[0][0]
+
             # Get the BCEF coordinate from the lon, lat
-            x, y, z = pyproj.transform(lla, ecef, v[0], v[1], height)  # -3000 working well in elysium, need aeroid
+            x, y, z = pyproj.transform(lla, ecef, v[0], v[1], height)
             gnd = csmapi.EcefCoord(x, y, z)
 
             # Grab the source image. This is just the node with the lowest ID, nothing smart.
