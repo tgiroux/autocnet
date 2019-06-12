@@ -77,7 +77,6 @@ def place_points_in_overlaps(cg, size_threshold=0.0007,
         points.extend(place_points_in_overlap(nodes, o.geom, dem=gd,
                                               iterative_phase_kwargs=iterative_phase_kwargs))
 
-
     session.add_all(points)
     session.commit()
 
@@ -150,7 +149,7 @@ def place_points_in_overlap(nodes, geom, dem=None,
         The geometry of the overlap region
 
     dem : GeoDataset
-         The DEM used to compute point elevations. An elevation of 0 is is used
+         The DEM used to compute point elevations. An elevation of 0 is used
          if no DEM is passed in.
 
     iterative_phase_kwargs : dict
@@ -176,20 +175,22 @@ def place_points_in_overlap(nodes, geom, dem=None,
     nodes.remove(source)
     source_camera = source.camera
     for v in valid:
-        geom = shapely.geometry.Point(v[0], v[1])
+        lon = v[0]
+        lat = v[1]
+        geom = shapely.geometry.Point(lon, lat)
         point = Points(geom=geom,
                        pointtype=2) # Would be 3 or 4 for ground
-
+        
         # Calculate the height, the distance (in meters) above or
         # below the aeroid (meters above or below the BCBF spheroid).
         if dem is None:
             height = 0
         else:
-            px, py = dem.latlon_to_pixel(v[1], v[0])
+            px, py = dem.latlon_to_pixel(lat, lon)
             height = dem.read_array(1, [px, py, 1, 1])[0][0]
 
         # Get the BCEF coordinate from the lon, lat
-        x, y, z = pyproj.transform(lla, ecef, v[0], v[1], height)  # -3000 working well in elysium, need aeroid
+        x, y, z = pyproj.transform(lla, ecef, lon, lat, height)
         gnd = csmapi.EcefCoord(x, y, z)
 
         sic = source_camera.groundToImage(gnd)
