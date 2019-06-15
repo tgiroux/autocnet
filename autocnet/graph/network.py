@@ -1607,7 +1607,7 @@ AND i1.id < i2.id""".format(query_string)
 
         return obj
 
-    def clear(self, tables=None):
+    def clear_db(self, tables=None):
         """
         Truncate all of the database tables and reset any
         autoincrement columns to start with 1.
