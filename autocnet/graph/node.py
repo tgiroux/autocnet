@@ -517,7 +517,8 @@ class NetworkNode(Node):
             cam = self.create_camera()
             try:
                 fp = self.footprint
-            except:
+            except Exception as e:
+                warnings.warn('Unable to generate image footprint.\n{}'.format(e))
                 fp = None
             # Create the image
             i = Images(name=kwargs['image_name'],
