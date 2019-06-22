@@ -659,7 +659,7 @@ class NetworkNode(Node):
             else:
                 boundary = generate_boundary(self.geodata.raster_size[::-1])  # yx to xy
                 try:
-                    geodata = GeoDataset(spatial.get('dem'))
+                    geodata = GeoDataset(config['spatial']['dem'])
                 except Exception as e:
                     warnings.warn('Unable to get the Geodata from dem.\n{}'.format(e))
                     geodata = 0.0
