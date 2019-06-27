@@ -76,7 +76,7 @@ def place_points_in_overlaps(cg, size_threshold=0.0007,
         overlaps = o.intersections
         if overlaps == None:
             continue
-        nodes = [cg.node[id] for id in overlaps]
+        nodes = [cg.node[id]['data'] for id in overlaps]
         points.extend(place_points_in_overlap(nodes, o.geom, dem=gd,
                                               iterative_phase_kwargs=iterative_phase_kwargs))
 
@@ -151,7 +151,7 @@ def place_points_in_overlap(nodes, geom, dem=None, cam_type="csm",
     Parameters
     ----------
     nodes : list of Nodes
-        The CandidateGraph nodes of all the images that intersect the overlap
+        The Nodes or Networknodes of all the images that intersect the overlap
 
     geom : geometry
         The geometry of the overlap region
@@ -191,7 +191,6 @@ def place_points_in_overlap(nodes, geom, dem=None, cam_type="csm",
     # Grab the source image. This is just the node with the lowest ID, nothing smart.
     source = nodes[0]
     nodes.remove(source)
-    source_camera = source["data"].camera
     for v in valid:
         lon = v[0]
         lat = v[1]
@@ -211,33 +210,33 @@ def place_points_in_overlap(nodes, geom, dem=None, cam_type="csm",
 
         if cam_type == "csm":
             gnd = csmapi.EcefCoord(x, y, z)
-            sic = source_camera.groundToImage(gnd)
+            sic = source.camera.groundToImage(gnd)
             ssample, sline = sic.samp, sic.line
         if cam_type == "isis":
-            sline, ssample = isis.ground_to_image(source["data"]["image_path"], lat ,lon)
+            sline, ssample = isis.ground_to_image(source["image_path"], lat ,lon)
 
         point.measures.append(Measures(sample=ssample,
                                        line=sline,
-                                       imageid=source['data']['node_id'],
-                                       serial=source['data'].isis_serial,
+                                       imageid=source['node_id'],
+                                       serial=source.isis_serial,
                                        measuretype=3))
 
 
         for i, dest in enumerate(nodes):
             if cam_type == "csm":
-                dic = dest['data'].camera.groundToImage(gnd)
+                dic = dest.camera.groundToImage(gnd)
                 dline, dsample = dic.line, dic.samp
             if cam_type == "isis":
-                dline, dsample = isis.groud_to_image(dest["data"]["image_path"], lat, lon)
+                dline, dsample = isis.groud_to_image(dest["image_path"], lat, lon)
 
             dx, dy, _ = iterative_phase(ssample, sline, dsample, dline,
-                                        source['data'].geodata, dest['data'].geodata,
+                                        source.geodata, dest.geodata,
                                         **iterative_phase_kwargs)
             if dx is not None or dy is not None:
                 point.measures.append(Measures(sample=dx,
                                                line=dy,
-                                               imageid=dest['data']['node_id'],
-                                               serial=dest['data'].isis_serial,
+                                               imageid=dest['node_id'],
+                                               serial=dest.isis_serial,
                                                measuretype=3))
         if len(point.measures) >= 2:
             points.append(point)
