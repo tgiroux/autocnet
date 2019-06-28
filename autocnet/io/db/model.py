@@ -4,6 +4,7 @@ import json
 
 import numpy as np
 
+import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import (Column, String, Integer, Float, \
                         ForeignKey, Boolean, LargeBinary, \
@@ -35,6 +36,13 @@ class BaseMixin(object):
         session.add(obj)
         session.commit()
         return obj
+
+    @staticmethod
+    def bulkadd(iterable):
+        session = Session()
+        session.add_all(iterable)
+        session.commit()
+        session.close()
 
 class JsonEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -249,6 +257,24 @@ class Overlay(BaseMixin, Base):
     def geom(self, geom):
         self._geom = from_shape(geom, srid=latitudinal_srid)
 
+    @classmethod
+    def overlapping_larger_than(cls, size_threshold):
+        """
+        Query the Overlay table for an iterable of responses where the objects
+        in the iterable have an area greater than a given size.
+
+        Parameters
+        ----------
+        size_threshold : Number
+                        area >= this arg are returned
+        """
+        session = Session()
+        res = session.query(cls).\
+                filter(sqlalchemy.func.ST_Area(cls.geom) >= size_threshold).\
+                filter(sqlalchemy.func.array_length(cls.intersections, 1) > 1)
+        session.close()
+        return res
+
 class PointType(enum.IntEnum):
     """
     Enum to enforce point type for ISIS control networks
@@ -267,7 +293,6 @@ class Points(BaseMixin, Base):
     _apriori = Column("apriori", Geometry('POINTZ', srid=rectangular_srid, dimension=3, spatial_index=False))
     _adjusted = Column("adjusted", Geometry('POINTZ', srid=rectangular_srid, dimension=3, spatial_index=False))
     measures = relationship('Measures')
-    rms = Column(Float)
 
     @hybrid_property
     def geom(self):
