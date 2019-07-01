@@ -1411,7 +1411,7 @@ class NetworkCandidateGraph(CandidateGraph):
                      mem_per_cpu=config['cluster']['processing_memory'],
                      time=walltime,
                      partition=config['cluster']['queue'],
-                     output=config['cluster']['cluster_log_dir']+'/slurm-%A_%a.out')
+                     output=config['cluster']['cluster_log_dir']+f'/autocnet.{function}-%j')
         submitter.submit(array='1-{}'.format(job_counter))
         return job_counter
 

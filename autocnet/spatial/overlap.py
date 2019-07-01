@@ -66,11 +66,11 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
         overlaps = o.intersections
         if overlaps == None:
             continue
-        overlapnodes = [nodes[id] for id in overlaps]
+        overlapnodes = [nodes[id]["data"] for id in overlaps]
         points.extend(place_points_in_overlap(overlapnodes, o.geom, dem=dem,
                                               iterative_phase_kwargs=iterative_phase_kwargs,
                                               distribute_points_kwargs=distribute_points_kwargs))
-    
+
     Points.bulkadd(points)
 
 def cluster_place_points_in_overlaps(size_threshold=0.0007,
@@ -212,7 +212,7 @@ def place_points_in_overlap(nodes, geom, dem=dem, cam_type="csm",
                 dic = dest.camera.groundToImage(gnd)
                 dline, dsample = dic.line, dic.samp
             if cam_type == "isis":
-                dline, dsample = isis.groud_to_image(dest["image_path"], lat, lon)
+                dline, dsample = isis.ground_to_image(dest["image_path"], lat, lon)
 
             dx, dy, _ = iterative_phase(ssample, sline, dsample, dline,
                                         source.geodata, dest.geodata,

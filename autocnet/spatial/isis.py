@@ -6,7 +6,7 @@ from numbers import Number
 import numpy as np
 import tempfile
 
-def point_info(cube_path, x, y, point_type):
+def point_info(cube_path, x, y, point_type, allow_outside=False):
     """
     Use Isis's campt to get image/ground point info from an image
 
@@ -56,17 +56,21 @@ def point_info(cube_path, x, y, point_type):
         f.write("\n".join(["{}, {}".format(xval,yval) for xval,yval in zip(x, y)]))
         f.flush()
         try:
-            pvlres = isis.campt(from_=cube_path, coordlist=f.name ,usecoordlist=True, coordtype=point_type)
-            for r in pvlres:
-                # convert all pixels to PLIO pixels from ISIS
-                r[1]["Sample"] -= .5
-                r[1]["Line"] -= .5
-
+            pvlres = isis.campt(from_=cube_path, coordlist=f.name, allowoutside=allow_outside, usecoordlist=True, coordtype=point_type)
         except ProcessError as e:
             warn(f"CAMPT call failed, image: {cube_path}\n{e.stderr}")
             return
 
         pvlres = pvl.loads(pvlres)
+        if len(x) > 1 and len(y) > 1:
+            for r in pvlres:
+                # convert all pixels to PLIO pixels from ISIS
+                r[1]["Sample"] -= .5
+                r[1]["Line"] -= .5
+        else:
+            pvlres["GroundPoint"]["Sample"] -= .5
+            pvlres["GroundPoint"]["Line"] -= .5
+
 
     return pvlres
 
