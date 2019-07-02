@@ -157,6 +157,9 @@ def session(tables, request):
             if t in ['Images', 'Cameras', 'Matches', 'Measures']:
                 session.execute(f'ALTER SEQUENCE {t}_id_seq RESTART WITH 1')
         session.commit()
+        # Ensure that this is the only connection to the DB
+        num_con = session.execute('SELECT sum(numbackends) FROM pg_stat_database;').scalar()
+        assert num_con == 1
 
     request.addfinalizer(cleanup)
 
