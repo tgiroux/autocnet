@@ -1474,8 +1474,9 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
             'sample':'x', 'line':'y', 'serial': 'serialnumber'}, inplace=True)
         if flistpath is None:
             flistpath = os.path.splitext(path)[0] + '.lis'
+        target = config['spatial'].get('target', None)
 
-        cnet.to_isis(df, path)
+        cnet.to_isis(df, path, targetname=target)
         cnet.write_filelist(self.files, path=flistpath)
 
     @staticmethod

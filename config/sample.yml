@@ -60,6 +60,8 @@ redis:
 
 ### Spatial Reference Setup ###
 spatial:
+    # The name of the target body that will be output in ISIS control networks.
+    target: 'MARS'
     # The following two values need to be added to the database that is storing
     # the spatial information.
     #
