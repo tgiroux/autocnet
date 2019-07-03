@@ -28,7 +28,7 @@ try:
     with open(os.environ['autocnet_config'], 'r') as f:
         config = yaml.safe_load(f)
 except:
-    warnings.warn('No autocnet_config environment variable set. Defaulting to an en empty configuration.')
+    warnings.warn('No autocnet_config environment variable set. Defaulting to an empty configuration.')
     config = {}
 
 if 'dem' in config['spatial']:

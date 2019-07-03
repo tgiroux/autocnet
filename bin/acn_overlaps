@@ -12,9 +12,7 @@ from autocnet.io.db.redis_queue import pop_computetime_push, finalize
 from autocnet.io.db.model import Overlay, Images, Points
 from autocnet.spatial.overlap import place_points_in_overlap
 from autocnet.graph.node import NetworkNode
-from autocnet import Session, dem
-
-from plio.io.io_gdal import GeoDataset
+from autocnet import Session
 
 #Load the config file
 try:
@@ -40,17 +38,11 @@ def main(msg, config):
     session.close()
     
     print('Placing points in overlap', id)
-    points = place_points_in_overlap(nodes, overlap.geom, dem, msg["cam_type"],
-                                     msg['iterative_phase_kwargs'],
+    points = place_points_in_overlap(nodes, overlap.geom, msg["cam_type"],
                                      msg['distribute_points_kwargs'])
     session.add_all(points)
     session.commit()
     session.close()
-    
-    print('Placing points in overlap', id)
-    points = place_points_in_overlap(nodes, overlap.geom, dem, msg["cam_type"],
-                                     msg['iterative_phase_kwargs'],
-                                     msg['distribute_points_kwargs'])
     
     print('Adding {} points to the database.'.format(len(points)))
     Points.bulkadd(points)
