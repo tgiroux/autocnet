@@ -71,6 +71,7 @@ BEGIN
     NEW.geom = ST_Force_2D(ST_Transform(NEW.adjusted, {}));
     RETURN NEW;
   EXCEPTION WHEN OTHERS THEN
+    raise notice 'FAILED TO PROJECT POINT';
     NEW.geom = Null;
     RETURN NEW;
 END;

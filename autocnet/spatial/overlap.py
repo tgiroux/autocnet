@@ -38,7 +38,7 @@ INSERT INTO overlay(intersections, geom) SELECT row.intersections, row.geom FROM
 """
 
 def place_points_in_overlaps(nodes, size_threshold=0.0007,
-                             distribute_points_kwargs={}):
+                             distribute_points_kwargs={}, cam_type='csm'):
     """
     Place points in all of the overlap geometries by back-projecing using
     sensor models.
@@ -59,8 +59,9 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
         overlaps = o.intersections
         if overlaps == None:
             continue
+
         overlapnodes = [nodes[id]["data"] for id in overlaps]
-        points.extend(place_points_in_overlap(overlapnodes, o.geom,
+        points.extend(place_points_in_overlap(overlapnodes, o.geom, cam_type=cam_type,
                                               distribute_points_kwargs=distribute_points_kwargs))
 
     Points.bulkadd(points)
@@ -108,7 +109,7 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
                  mem_per_cpu=config['cluster']['processing_memory'],
                  time=walltime,
                  partition=config['cluster']['queue'],
-                 output=config['cluster']['cluster_log_dir']+'/slurm-%A_%a.out')
+                 output=config['cluster']['cluster_log_dir']+'/autocnet.place_points-%j')
     submitter.submit(array='1-{}'.format(job_counter))
     return job_counter
 

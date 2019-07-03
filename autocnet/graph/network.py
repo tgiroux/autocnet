@@ -1411,7 +1411,7 @@ class NetworkCandidateGraph(CandidateGraph):
                      mem_per_cpu=config['cluster']['processing_memory'],
                      time=walltime,
                      partition=config['cluster']['queue'],
-                     output=config['cluster']['cluster_log_dir']+'/slurm-%A_%a.out')
+                     output=config['cluster']['cluster_log_dir']+f'/autocnet.{function}-%j')
         submitter.submit(array='1-{}'.format(job_counter))
         return job_counter
 
@@ -1474,8 +1474,9 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
             'sample':'x', 'line':'y', 'serial': 'serialnumber'}, inplace=True)
         if flistpath is None:
             flistpath = os.path.splitext(path)[0] + '.lis'
+        target = config['spatial'].get('target', None)
 
-        cnet.to_isis(df, path)
+        cnet.to_isis(df, path, targetname=target)
         cnet.write_filelist(self.files, path=flistpath)
 
     @staticmethod
@@ -1513,7 +1514,7 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         session.commit()
 
     @classmethod
-    def from_filelist(cls, filelist):
+    def from_filelist(cls, filelist, clear_db=False):
         """
         Parse a filelist to add nodes to the database. Using the
         information in the database, then instantiate a complete,
@@ -1537,6 +1538,9 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
             filelist = io_utils.file_to_list(filelist)
         else:
             warnings.warn('Unable to parse the passed filelist')
+
+        if clear_db:
+            cls.clear_db()
 
         for f in filelist:
             # Create the nodes in the graph. Really, this is creating the
@@ -1608,7 +1612,8 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
 
         return obj
 
-    def clear_db(self, tables=None):
+    @staticmethod
+    def clear_db(tables=None):
         """
         Truncate all of the database tables and reset any
         autoincrement columns to start with 1.
@@ -1627,14 +1632,14 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
             tables = engine.table_names()
 
         for t in tables:
-            session.execute(f'TRUNCATE TABLE {t} CASCADE')
+          if t != 'spatial_ref_sys':
             try:
                 session.execute(f'ALTER SEQUENCE {t}_id_seq RESTART WITH 1')
-            except:
+            except Exception as e:
+                warnings.warn(f'Failed to truncate table {t}, {t} not modified')
                 session.rollback()
         session.commit()
         session.close()
-
 
     def place_points_from_cnet(self, cnet):
         semi_major, semi_minor = config["spatial"]["semimajor_rad"], config["spatial"]["semiminor_rad"]

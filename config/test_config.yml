@@ -41,6 +41,7 @@ redis:
 
 ### Spatial Reference Setup ###
 spatial:
+    target: 'EARTH'
     latitudinal_srid: 4326  # For testing we use WGS84.
     rectangular_srid: 4978
     semimajor_rad: 3396190  # in meters
