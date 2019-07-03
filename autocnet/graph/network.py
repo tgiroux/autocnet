@@ -1514,7 +1514,7 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         session.commit()
 
     @classmethod
-    def from_filelist(cls, filelist):
+    def from_filelist(cls, filelist, clear_db=False):
         """
         Parse a filelist to add nodes to the database. Using the
         information in the database, then instantiate a complete,
@@ -1538,6 +1538,9 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
             filelist = io_utils.file_to_list(filelist)
         else:
             warnings.warn('Unable to parse the passed filelist')
+
+        if clear_db:
+            cls.clear_db()
 
         for f in filelist:
             # Create the nodes in the graph. Really, this is creating the
@@ -1609,7 +1612,8 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
 
         return obj
 
-    def clear_db(self, tables=None):
+    @staticmethod
+    def clear_db(tables=None):
         """
         Truncate all of the database tables and reset any
         autoincrement columns to start with 1.

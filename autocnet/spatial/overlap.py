@@ -40,7 +40,7 @@ INSERT INTO overlay(intersections, geom) SELECT row.intersections, row.geom FROM
 
 def place_points_in_overlaps(nodes, size_threshold=0.0007,
                              iterative_phase_kwargs={'size':71},
-                             distribute_points_kwargs={}):
+                             distribute_points_kwargs={}, cam_type='csm'):
     """
     Place points in all of the overlap geometries by back-projecing using
     sensor models.
@@ -66,8 +66,9 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
         overlaps = o.intersections
         if overlaps == None:
             continue
-        overlapnodes = [nodes[id]["data"] for id in overlaps]
-        points.extend(place_points_in_overlap(overlapnodes, o.geom, dem=dem,
+
+        overlapnodes = [nodes[id]['data'] for id in overlaps]
+        points.extend(place_points_in_overlap(overlapnodes, o.geom, dem=dem, cam_type=cam_type,
                                               iterative_phase_kwargs=iterative_phase_kwargs,
                                               distribute_points_kwargs=distribute_points_kwargs))
 
