@@ -170,9 +170,9 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
                        adjusted=geom,
                        pointtype=2) # Would be 3 or 4 for ground
         
+        gnd = csmapi.EcefCoord(x, y, z)
         for node in nodes:
             if cam_type == "csm":
-                gnd = csmapi.EcefCoord(x, y, z)
                 image_coord = node.camera.groundToImage(gnd)
                 sample, line = image_coord.samp, image_coord.line
             if cam_type == "isis":

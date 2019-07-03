@@ -6,7 +6,6 @@ from autocnet.graph.node import Node
 import csmapi
 
 
-# @patch('autocnet.spatial.overlap.iterative_phase', return_value=(0, 1, 2))
 @patch('autocnet.cg.cg.distribute_points_in_geom', return_value=[(0, 0), (5, 5), (10, 10)])
 def test_place_points_in_overlap(point_distributer):
     # Mock setup
