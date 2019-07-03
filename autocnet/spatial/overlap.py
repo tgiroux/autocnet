@@ -63,7 +63,6 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
         overlapnodes = [nodes[id]["data"] for id in overlaps]
         points.extend(place_points_in_overlap(overlapnodes, o.geom, cam_type=cam_type,
                                               distribute_points_kwargs=distribute_points_kwargs))
-
     Points.bulkadd(points)
 
 def cluster_place_points_in_overlaps(size_threshold=0.0007,
@@ -146,7 +145,6 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
     semi_minor = config['spatial']['semiminor_rad']
     ecef = pyproj.Proj(proj='geocent', a=semi_major, b=semi_minor)
     lla = pyproj.Proj(proj='latlon', a=semi_major, b=semi_minor)
-
     valid = compgeom.distribute_points_in_geom(geom, **distribute_points_kwargs)
     if not valid:
         warnings.warn('Failed to distribute points in overlap')
