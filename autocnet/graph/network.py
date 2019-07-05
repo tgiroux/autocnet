@@ -15,7 +15,9 @@ from redis import StrictRedis
 import shapely.affinity
 import shapely.geometry
 import shapely.wkt as swkt
+import shapely.wkb as swkb
 import shapely.ops
+
 
 import pyproj
 
@@ -1133,11 +1135,6 @@ class CandidateGraph(nx.Graph):
             self, self.controlnetwork, **kwargs)
         return cc
 
-    def to_isis(self, outname, *args, **kwargs):
-        serials = self.serials()
-        files = self.files()
-        self.controlnetwork.to_isis(outname, serials, files, *args, **kwargs)
-
     def nodes_iter(self, data=False):
         for i, n in self.nodes.data('data'):
             if data:
@@ -1253,6 +1250,7 @@ class CandidateGraph(nx.Graph):
         as functions such as subpixel matching can result in orphaned measures.
         """
         return self.controlnetwork.groupby('point_id').apply(lambda g: g if len(g) > 1 else None)
+
 
     def to_isis(self, outname, serials, olist, *args, **kwargs):  # pragma: no cover
         """
@@ -1445,8 +1443,8 @@ class NetworkCandidateGraph(CandidateGraph):
             n.generate_vrt(**kwargs)
 
     def to_isis(self, path, flistpath=None,sql = """
-SELECT points.id, measures.serial, points.pointtype, measures.sample, measures.line, measures.measuretype,
-measures.imageid
+SELECT points.id, measures.serial, points.pointtype, points.apriori, points.adjusted,
+measures.sample, measures.line, measures.measuretype, measures.imageid
 FROM measures INNER JOIN points ON measures.pointid = points.id
 WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE;
 """):
@@ -1472,6 +1470,31 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         df = pd.read_sql(sql, engine)
         df.rename(columns={'imageid':'image_index','id':'point_id', 'pointtype' : 'type',
             'sample':'x', 'line':'y', 'serial': 'serialnumber'}, inplace=True)
+
+        #create columns in the dataframe; zeros ensure plio (/protobuf) will
+        #ignore unless populated with alternate values
+        df['aprioriX'] = 0
+        df['aprioriY'] = 0
+        df['aprioriZ'] = 0
+        df['adjustedX'] = 0
+        df['adjustedY'] = 0
+        df['adjustedZ'] = 0
+
+        #only populate the new columns for ground points. Otherwise, isis will
+        #recalculate the control point lat/lon from control measures which where
+        #"massaged" by the phase and template matcher.
+        for i, row in df.iterrows():
+            if row['type'] == 3 or row['type'] == 4:
+                apriori_geom = swkb.loads(row['apriori'], hex=True)
+                row['aprioriX'] = apriori_geom.x
+                row['aprioriY'] = apriori_geom.y
+                row['aprioriZ'] = apriori_geom.z
+                adjusted_geom = swkb.loads(row['adjusted'], hex=True)
+                row['adjustedX'] = adjusted_geom.x
+                row['adjustedY'] = adjusted_geom.y
+                row['adjustedZ'] = adjusted_geom.z
+                df.iloc[i] = row
+
         if flistpath is None:
             flistpath = os.path.splitext(path)[0] + '.lis'
         target = config['spatial'].get('target', None)
