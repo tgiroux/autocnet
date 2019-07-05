@@ -38,7 +38,7 @@ def main(msg, config):
     session.close()
     
     print('Placing points in overlap', id)
-    points = place_points_in_overlap(nodes, overlap.geom, msg["cam_type"],
+    points = place_points_in_overlap(nodes, geom, msg["cam_type"],
                                      msg['distribute_points_kwargs'])
     
     print('Adding {} points to the database.'.format(len(points)))
