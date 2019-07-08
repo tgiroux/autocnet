@@ -9,7 +9,7 @@ from plurmy import Slurm
 from autocnet import Session, config
 from autocnet.matcher import naive_template
 from autocnet.matcher import ciratefi
-from autocnet.io.db.model import Points, Images
+from autocnet.io.db.model import Points, Images, JsonEncoder
 from autocnet.graph.node import NetworkNode
 
 import geopandas as gpd
@@ -496,7 +496,8 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 71},
                                      subpixel_template_kwargs={'image_size':(121,121)},
                                      cost_func=lambda x,y: 1/x**2 * y,
                                      threshold=0.005,
-                                     walltime='00:10:00'):
+                                     walltime='00:10:00',
+                                     chunksize=1000):
     """
     Distributed subpixel registration of all of the points in a given DB table.
 
@@ -538,7 +539,7 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 71},
                'subpixel_template_kwargs' : subpixel_template_kwargs,
                'threshold':threshold,
                'walltime' : walltime}
-        rqueue.rpush(queuename, json.dumps(msg))
+        rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
     session.close()
 
     job_counter = i + 1
@@ -549,5 +550,5 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 71},
                  time=walltime,
                  partition=config['cluster']['queue'],
                  output=config['cluster']['cluster_log_dir']+'/slurm-%A_%a.out')
-    submitter.submit(array='1-{}'.format(job_counter))
+    submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize)
     return job_counter

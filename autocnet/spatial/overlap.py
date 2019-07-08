@@ -7,9 +7,9 @@ import shapely
 import sqlalchemy
 from plio.io.io_gdal import GeoDataset
 
-from autocnet import config, dem
+from autocnet import config, dem, Session
 from autocnet.cg import cg as compgeom
-from autocnet.io.db.model import Images, Measures, Overlay, Points
+from autocnet.io.db.model import Images, Measures, Overlay, Points, JsonEncoder
 from autocnet.spatial import isis
 
 from plurmy import Slurm
@@ -67,7 +67,9 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
 
 def cluster_place_points_in_overlaps(size_threshold=0.0007,
                                      distribute_points_kwargs={},
-                                     walltime='00:10:00', cam_type="csm"):
+                                     walltime='00:10:00', 
+                                     chunksize=1000,
+                                     cam_type="csm"):
     """
     Place points in all of the overlap geometries by back-projecing using
     sensor models. This method uses the cluster to process all of the overlaps
@@ -85,9 +87,6 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
                options: {"csm", "isis"}
                Pick what kind of camera model implementation to use
     """
-    # Get all of the overlaps over the size threshold
-    overlaps = Overlay.overlapping_larger_than(size_threshold)
-
     # Setup the redis queue
     rqueue = StrictRedis(host=config['redis']['host'],
                          port=config['redis']['port'],
@@ -95,21 +94,24 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
 
     # Push the job messages onto the queue
     queuename = config['redis']['processing_queue']
-    for overlap in overlaps:
-        msg = {'id' : overlap.id,
+    past = 0
+    session = Session()
+    ids = session.query(Overlay.id).all()
+    session.close()
+    for i, id in enumerate(ids):
+        msg = {'id' : id[0],
                'distribute_points_kwargs' : distribute_points_kwargs,
                'walltime' : walltime,
                'cam_type': cam_type}
-        rqueue.rpush(queuename, json.dumps(msg))
-    job_counter = len([*overlaps]) + 1
-
+        rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
     # Submit the jobs
     submitter = Slurm('acn_overlaps',
                  mem_per_cpu=config['cluster']['processing_memory'],
                  time=walltime,
                  partition=config['cluster']['queue'],
                  output=config['cluster']['cluster_log_dir']+'/autocnet.place_points-%j')
-    submitter.submit(array='1-{}'.format(job_counter))
+    job_counter = i+1
+    submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize)
     return job_counter
 
 def place_points_in_overlap(nodes, geom, cam_type="csm",
