@@ -22,6 +22,7 @@ import yaml
 from autocnet.io.db.redis_queue import pop_computetime_push
 from autocnet.io.db.model import Images, Cameras
 from autocnet.utils import utils
+from autocnet import Session
 
 def requests_retry_session(
     retries=3,
@@ -79,8 +80,20 @@ def create_camera(config, geodata, imagepath):
     return cam, camera
 
 def main(msg, config):
+    session = Session()
+    serials = [s[0] for s in session.query(Images.serial).all()]
+    session.close()
+
     images = [] 
     for path in msg['imagepaths']:
+        try:
+            serial = generate_serial_number(path)
+        except:
+            warnings.warn(f'Unable to generate serial for {path}')
+            continue
+        if serial in serials:
+            print(f'Image {path} already in database.')
+            continue
         print(f'Processing: {path}')
         try:
             geodata = GeoDataset(path)
