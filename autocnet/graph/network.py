@@ -1610,7 +1610,7 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         [copyfile(old, new) for old, new in oldnew]
 
     @classmethod
-    def from_remote_database(cls, config, path,  query_string='SELECT * FROM public.images'):
+    def from_remote_database(cls, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
         """
         This is a constructor that takes an existing database containing images and sensors, 
         copies the selected rows into the project specified in the autocnet_config variable, 
@@ -1624,12 +1624,12 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
 
         Parameters
         ----------
-        config : dict
-                 In the form: {'username':'somename',
-                               'password':'somepassword',
-                               'host':'somehost',
-                               'pgbouncer_port':6543,
-                               'name':'somename'}
+        source_db_config : dict
+                           In the form: {'username':'somename',
+                                         'password':'somepassword',
+                                         'host':'somehost',
+                                         'pgbouncer_port':6543,
+                                         'name':'somename'}
         
         path : str
                The PATH to which images in the database specified in the config
@@ -1648,19 +1648,19 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
 
         Example
         -------
-        >>> config = {'username':'jay',
-          'password':'abcde',
-          'host':'autocnet.wr.usgs.gov',
-          'pgbouncer_port':5432,
-          'name':'ctx'}
+        >>> source_db_config = {'username':'jay',
+        'password':'abcde',
+        'host':'autocnet.wr.usgs.gov',
+        'pgbouncer_port':5432,
+        'name':'ctx'}
         >>> geom = 'LINESTRING(145 10, 145 11, 146 11, 146 10, 145 10)'
         >>> srid = 949900
         >>> outpath = '/scratch/jlaura/fromdb'
         >>> query = f"SELECT * FROM Images WHERE ST_INTERSECTS(footprint_latlon, ST_Polygon(ST_GeomFromText('{geom}'), {srid})) = TRUE"
-        >>> ncg = NetworkCandidateGraph.from_remote_database(config, outpath, query_string=query)
+        >>> ncg = NetworkCandidateGraph.from_remote_database(source_db_config, outpath, query_string=query)
         """
-        
-        sourceSession, _ = new_connection(config)
+
+        sourceSession, _ = new_connection(source_db_config)
         sourcesession = sourceSession()
         
         sourceimages = sourcesession.execute(query_string).fetchall()
