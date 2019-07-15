@@ -3,6 +3,7 @@ import itertools
 import json
 import math
 import os
+from shutil import copyfile
 from time import gmtime, strftime, time
 import warnings
 
@@ -1581,8 +1582,29 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
 
         return obj
 
+    def copy_images(self, newpath):
+        """
+        """
+        if not os.path.exists(newpath):
+            os.makedirs(newpath)
+
+        session = Session()
+        images = session.query(Images.path).all()
+        oldnew = []
+        for obj in images:
+            oldpath = obj.path
+            filename = os.path.basename(oldpath)
+            newpath = os.path.join(newpath, filename)
+            obj.path = newpath
+            oldnew.append((oldpath, newpath))
+        session.commit()
+        session.close()
+        
+        # Copy the files
+        [shutil(old, new) for old, new in oldnew]]
+
     @classmethod
-    def from_remote_database(cls, config, query_string='SELECT * FROM public.images'):
+    def from_remote_database(cls, config, path,  query_string='SELECT * FROM public.images'):
         """
         This is a constructor that takes an existing database containing images and sensors, 
         copies the selected rows into the project specified in the autocnet_config variable, 
@@ -1609,12 +1631,15 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         destinationsession.commit()
         destinationsession.close()
         sourcesession.close()
+
+        # Create the graph, copy the images, and compute the overlaps
         obj = cls.from_database()
+        obj.copy_images(path)
         obj._execute_sql(compute_overlaps_sql)
         return obj
 
     @classmethod
-    def from_database(cls, query_string='SELECT * FROM public.images'):
+    def from_database(cls, path, query_string='SELECT * FROM public.images'):
         """
         This is a constructor that takes the results from an arbitrary query string,
         uses those as a subquery into a standard polygon overlap query and
