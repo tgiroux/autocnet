@@ -1582,26 +1582,32 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
 
         return obj
 
-    def copy_images(self, newpath):
+    def copy_images(self, newdir):
         """
+        Copy images from a given directory into a new directory and
+        update the 'path' column in the Images table.
+
+        Parameters
+        ----------
+        newdir : str
+                 The full output PATH where the images are to be copied to.
         """
-        if not os.path.exists(newpath):
-            os.makedirs(newpath)
+        if not os.path.exists(newdir):
+            os.makedirs(newdir)
 
         session = Session()
-        images = session.query(Images.path).all()
+        images = session.query(Images).all()
         oldnew = []
         for obj in images:
             oldpath = obj.path
             filename = os.path.basename(oldpath)
-            newpath = os.path.join(newpath, filename)
-            obj.path = newpath
-            oldnew.append((oldpath, newpath))
+            obj.path = os.path.join(newdir, filename)
+            oldnew.append((oldpath, obj.path))
         session.commit()
         session.close()
         
         # Copy the files
-        [shutil(old, new) for old, new in oldnew]]
+        [copyfile(old, new) for old, new in oldnew]
 
     @classmethod
     def from_remote_database(cls, config, path,  query_string='SELECT * FROM public.images'):
@@ -1612,7 +1618,48 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         similar to the `from_database` method. The main difference is that this
         method assumes that the image and sensor rows are prepopulated in an external db
         and simply copies those entires into the currently speficied project.
+
+        Currently, this method does NOT check for duplicate serial numbers during the 
+        bulk add. Therefore multiple runs of this method on the same database will fail.
+
+        Parameters
+        ----------
+        config : dict
+                 In the form: {'username':'somename',
+                               'password':'somepassword',
+                               'host':'somehost',
+                               'pgbouncer_port':6543,
+                               'name':'somename'}
+        
+        path : str
+               The PATH to which images in the database specified in the config
+               will be copied to. This method duplicates the data and copies it
+               to a user defined PATH to avoid issues with updating image ephemeris
+               across projects.
+
+        query_string : str
+                       An optional string to select a subset of the images in the 
+                       database specified in the config. 
+
+        Returns
+        -------
+        obj : obj
+              A network candidate graph.
+
+        Example
+        -------
+        >>> config = {'username':'jay',
+          'password':'abcde',
+          'host':'autocnet.wr.usgs.gov',
+          'pgbouncer_port':5432,
+          'name':'ctx'}
+        >>> geom = 'LINESTRING(145 10, 145 11, 146 11, 146 10, 145 10)'
+        >>> srid = 949900
+        >>> outpath = '/scratch/jlaura/fromdb'
+        >>> query = f"SELECT * FROM Images WHERE ST_INTERSECTS(footprint_latlon, ST_Polygon(ST_GeomFromText('{geom}'), {srid})) = TRUE"
+        >>> ncg = NetworkCandidateGraph.from_remote_database(config, outpath, query_string=query)
         """
+        
         sourceSession, _ = new_connection(config)
         sourcesession = sourceSession()
         
@@ -1639,7 +1686,7 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         return obj
 
     @classmethod
-    def from_database(cls, path, query_string='SELECT * FROM public.images'):
+    def from_database(cls, query_string='SELECT * FROM public.images'):
         """
         This is a constructor that takes the results from an arbitrary query string,
         uses those as a subquery into a standard polygon overlap query and
