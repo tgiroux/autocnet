@@ -3,6 +3,7 @@ import itertools
 import json
 import math
 import os
+import queue
 from shutil import copyfile
 from time import gmtime, strftime, time
 import warnings
@@ -43,6 +44,7 @@ from autocnet.io.db.connection import new_connection, Parent
 from autocnet.vis.graph_view import plot_graph, cluster_plot
 from autocnet.control import control
 from autocnet.spatial.overlap import compute_overlaps_sql
+from autocnet.utils.filecopy import FileCopy
 
 #np.warnings.filterwarnings('ignore')
 
@@ -1582,7 +1584,7 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
 
         return obj
 
-    def copy_images(self, newdir):
+    def copy_images(self, newdir, nthreads=10):
         """
         Copy images from a given directory into a new directory and
         update the 'path' column in the Images table.
@@ -1591,6 +1593,9 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         ----------
         newdir : str
                  The full output PATH where the images are to be copied to.
+        
+        nthreads : int
+                   The number of threads to spawn during the file copy.
         """
         if not os.path.exists(newdir):
             os.makedirs(newdir)
@@ -1606,11 +1611,15 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         session.commit()
         session.close()
         
-        # Copy the files
-        [copyfile(old, new) for old, new in oldnew]
+        # Copy the files asynchronously
+        q = queue.Queue()
+        for mv in oldnew:
+            q.put_nowait(mv)
+        for i in range(nthreads):
+            FileCopy(q).start()
 
     @classmethod
-    def from_remote_database(cls, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
+    def from_remote_database(cls, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10', copy__images_kwargs={}):
         """
         This is a constructor that takes an existing database containing images and sensors, 
         copies the selected rows into the project specified in the autocnet_config variable, 
@@ -1640,6 +1649,9 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         query_string : str
                        An optional string to select a subset of the images in the 
                        database specified in the config. 
+
+        copy_images_kwargs : dict
+                             The kwargs passed through to the copy image method.
 
         Returns
         -------
@@ -1681,7 +1693,7 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
 
         # Create the graph, copy the images, and compute the overlaps
         obj = cls.from_database()
-        obj.copy_images(path)
+        obj.copy_images(path, **copy_image_kwargs)
         obj._execute_sql(compute_overlaps_sql)
         return obj
 
