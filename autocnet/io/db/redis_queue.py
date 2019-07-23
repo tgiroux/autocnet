@@ -1,5 +1,6 @@
 import json
 import time
+import warnings
 
 import numpy as np
 
@@ -10,7 +11,7 @@ def pop_computetime_push(queue, inqueue, outqueue):
     """
     Pop a message from a 'todo' queue, compute the maximum possible walltime,
     push the updated message to 'processing queue', and return the
-    original message.' 
+    original message.'
 
     Parameters
     ----------
@@ -27,8 +28,15 @@ def pop_computetime_push(queue, inqueue, outqueue):
     msg : dict
           The message from the processing queue.
     """
+
+    # Check if the redis queue is empty
+    msg = queue.rpop(inqueue)
+    if msg is None:
+        warnings.warn('Expected to process a cluster job, but the message queue is empty.')
+        sys.exit()
+
     # Load the message out of the processing queue and add a max processing time key
-    msg = json.loads(queue.rpop(inqueue), object_hook=object_hook)
+    msg = json.loads(msg, object_hook=object_hook)
     msg['max_time'] = time.time() + slurm_walltime_to_seconds(msg['walltime'])
 
     # Push the message to the processing queue with the updated max_time
@@ -44,7 +52,7 @@ def finalize(response, remove_key, queue, outqueue, removequeue):
     ----------
     response : dict
                The reponse to the callback function
-    
+
     remove_key : dict
                  The key to remove from the removequeue
 
