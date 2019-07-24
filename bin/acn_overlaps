@@ -35,11 +35,11 @@ def main(msg, config):
         res = session.query(Images).filter(Images.id == id).one()
         nodes.append(NetworkNode(node_id=id, image_path=res.path))
     session.close()
-    
+
     print('Placing points in overlap', oid)
     points = place_points_in_overlap(nodes, geom, msg["cam_type"],
                                      msg['distribute_points_kwargs'])
-    
+
     print('Adding {} points to the database.'.format(len(points)))
     Points.bulkadd(points)
 
@@ -50,5 +50,8 @@ if __name__ == '__main__':
     msg = pop_computetime_push(queue,
                                conf['processing_queue'],
                                conf['working_queue'])
+    if msg is None:
+        warnings.warn('Expected to process a cluster job, but the message queue is empty.')
+        sys.exit()
 
     main(msg, config)
