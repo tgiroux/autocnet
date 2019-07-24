@@ -32,10 +32,9 @@ def pop_computetime_push(queue, inqueue, outqueue):
     # Check if the redis queue is empty
     msg = queue.rpop(inqueue)
     if msg is None:
-        warnings.warn('Expected to process a cluster job, but the message queue is empty.')
-        sys.exit()
+        return msg
 
-    # Load the message out of the processing queue and add a max processing time key
+    # if msg is not empty, Load the message out of the processing queue and add a max processing time key
     msg = json.loads(msg, object_hook=object_hook)
     msg['max_time'] = time.time() + slurm_walltime_to_seconds(msg['walltime'])
 

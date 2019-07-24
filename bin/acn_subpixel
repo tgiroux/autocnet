@@ -47,5 +47,8 @@ if __name__ == '__main__':
     msg = pop_computetime_push(queue,
                                conf['processing_queue'],
                                conf['working_queue'])
+    if msg is None:
+        warnings.warn('Expected to process a cluster job, but the message queue is empty.')
+        sys.exit()
 
     main(msg, config)
