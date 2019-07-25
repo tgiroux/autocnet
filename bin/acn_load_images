@@ -84,7 +84,7 @@ def main(msg, config):
     serials = [s[0] for s in session.query(Images.serial).all()]
     session.close()
 
-    images = [] 
+    images = []
     for path in msg['imagepaths']:
         try:
             serial = generate_serial_number(path)
@@ -113,14 +113,18 @@ def main(msg, config):
             images.append(i)
         except:
             warnings.warn(f'Failed to add {path}.')
-            
+
     Images.bulkadd(images)
 
 if __name__ == '__main__':
     conf = config['redis']
     queue = StrictRedis(host=conf['host'], port=conf['port'], db=0)
-    
+
     msg = pop_computetime_push(queue,
                                conf['processing_queue'],
                                conf['working_queue'])
+    if msg is None:
+        warnings.warn('Expected to process a cluster job, but the message queue is empty.')
+        sys.exit()
+
     main(msg, config)
