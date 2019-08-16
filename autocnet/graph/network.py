@@ -1570,9 +1570,11 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         if clear_db:
             cls.clear_db()
 
-        for f in filelist:
+        total=len(filelist)
+        for cnt, f in enumerate(filelist):
             # Create the nodes in the graph. Really, this is creating the
             # images in the DB
+            print('loading {} of {}'.format(cnt+1, total))
             image_name = os.path.basename(f)
             NetworkNode(image_path=f, image_name=image_name)
 
@@ -1605,21 +1607,21 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
             oldnew.append((oldpath, obj.path))
         session.commit()
         session.close()
-        
+
         # Copy the files
         [copyfile(old, new) for old, new in oldnew]
 
     @classmethod
     def from_remote_database(cls, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
         """
-        This is a constructor that takes an existing database containing images and sensors, 
-        copies the selected rows into the project specified in the autocnet_config variable, 
+        This is a constructor that takes an existing database containing images and sensors,
+        copies the selected rows into the project specified in the autocnet_config variable,
         and instantiates a new NetworkCandidateGraph object. This method is
         similar to the `from_database` method. The main difference is that this
         method assumes that the image and sensor rows are prepopulated in an external db
         and simply copies those entires into the currently speficied project.
 
-        Currently, this method does NOT check for duplicate serial numbers during the 
+        Currently, this method does NOT check for duplicate serial numbers during the
         bulk add. Therefore multiple runs of this method on the same database will fail.
 
         Parameters
@@ -1630,7 +1632,7 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
                                          'host':'somehost',
                                          'pgbouncer_port':6543,
                                          'name':'somename'}
-        
+
         path : str
                The PATH to which images in the database specified in the config
                will be copied to. This method duplicates the data and copies it
@@ -1638,8 +1640,8 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
                across projects.
 
         query_string : str
-                       An optional string to select a subset of the images in the 
-                       database specified in the config. 
+                       An optional string to select a subset of the images in the
+                       database specified in the config.
 
         Returns
         -------
@@ -1662,9 +1664,9 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
 
         sourceSession, _ = new_connection(source_db_config)
         sourcesession = sourceSession()
-        
+
         sourceimages = sourcesession.execute(query_string).fetchall()
-        
+
         destinationsession = Session()
         destinationsession.execute(Images.__table__.insert(), sourceimages)
 

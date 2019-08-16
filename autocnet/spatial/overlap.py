@@ -172,7 +172,8 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
         geom = shapely.geometry.Point(x, y, z)
         point = Points(apriori=geom,
                        adjusted=geom,
-                       pointtype=2) # Would be 3 or 4 for ground
+                       pointtype=2, # Would be 3 or 4 for ground
+                       cam_type=cam_type)
 
         gnd = csmapi.EcefCoord(x, y, z)
         for node in nodes:
@@ -184,6 +185,8 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
 
             point.measures.append(Measures(sample=sample,
                                            line=line,
+                                           apriorisample=sample,
+                                           aprioriline=line,
                                            imageid=node['node_id'],
                                            serial=node.isis_serial,
                                            measuretype=3))

@@ -516,7 +516,8 @@ class NetworkNode(Node):
             kps = Keypoints(path=kpspath, nkeypoints=0)
             cam = self.create_camera()
             try:
-                fp = self.footprint
+                fp, cam_type = self.footprint
+
             except Exception as e:
                 warnings.warn('Unable to generate image footprint.\n{}'.format(e))
                 fp = None
@@ -526,7 +527,8 @@ class NetworkNode(Node):
                        footprint_latlon=fp,
                        keypoints=kps,
                        cameras=cam,
-                       serial=self.isis_serial)
+                       serial=self.isis_serial,
+                       cam_type=cam_type)
             session = Session()
             session.add(i)
             session.commit()
@@ -657,7 +659,8 @@ class NetworkNode(Node):
             # get ISIS footprint if possible
             if utils.find_in_dict(self.geodata.metadata, "Polygon"):
                 footprint_latlon =  shapely.wkt.loads(self.geodata.footprint.ExportToWkt())
-                return footprint_latlon
+                cam_type = 'isis'
+                return footprint_latlon, cam_type
             # Get CSM footprint
             else:
                 boundary = generate_boundary(self.geodata.raster_size[::-1])  # yx to xy
@@ -669,7 +672,8 @@ class NetworkNode(Node):
 
                 footprint_latlon = generate_latlon_footprint(self.camera, boundary, dem=geodata)
                 footprint_latlon.FlattenTo2D()
-                return footprint_latlon
+                cam_type = 'csm'
+                return footprint_latlon, cam_type
         else:
             # in database, return footprint
             footprint_latlon = res.footprint_latlon
