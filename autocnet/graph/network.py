@@ -1577,7 +1577,6 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
             print('loading {} of {}'.format(cnt+1, total))
             image_name = os.path.basename(f)
             NetworkNode(image_path=f, image_name=image_name)
-            cnt+=1
 
         obj = cls.from_database()
         # Execute the computation to compute overlapping geometries
