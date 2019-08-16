@@ -1570,12 +1570,11 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         if clear_db:
             cls.clear_db()
 
-        cnt=1
         total=len(filelist)
-        for f in filelist:
+        for cnt, f in enumerate(filelist):
             # Create the nodes in the graph. Really, this is creating the
             # images in the DB
-            print('loading {} of {}'.format(cnt, total))
+            print('loading {} of {}'.format(cnt+1, total))
             image_name = os.path.basename(f)
             NetworkNode(image_path=f, image_name=image_name)
             cnt+=1
