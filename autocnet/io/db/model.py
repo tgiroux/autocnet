@@ -178,6 +178,7 @@ class Cameras(BaseMixin, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     image_id = Column(Integer, ForeignKey("images.id", ondelete="CASCADE"), unique=True)
     camera = Column(Json())
+    camtype = Column(String)
 
 class Images(BaseMixin, Base):
     __tablename__ = 'images'
@@ -189,6 +190,7 @@ class Images(BaseMixin, Base):
     active = Column(Boolean, default=True)
     _footprint_latlon = Column("footprint_latlon", Geometry('MultiPolygon', srid=latitudinal_srid, dimension=2, spatial_index=True))
     footprint_bodyfixed = Column(Geometry('MULTIPOLYGON', dimension=2))
+    cam_type = Column(String)
     #footprint_bodyfixed = Column(Geometry('POLYGON',dimension=3))
 
     # Relationships
@@ -273,6 +275,7 @@ class Points(BaseMixin, Base):
     _pointtype = Column("pointtype", IntEnum(PointType), nullable=False)  # 2, 3, 4 - Could be an enum in the future, map str to int in a decorator
     identifier = Column(String, unique=True)
     _geom = Column("geom", Geometry('POINT', srid=latitudinal_srid, dimension=2, spatial_index=True))
+    cam_type = Column(String)
     active = Column(Boolean, default=True)
     _apriori = Column("apriori", Geometry('POINTZ', srid=rectangular_srid, dimension=3, spatial_index=False))
     _adjusted = Column("adjusted", Geometry('POINTZ', srid=rectangular_srid, dimension=3, spatial_index=False))

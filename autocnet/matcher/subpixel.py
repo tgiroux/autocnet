@@ -354,7 +354,7 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
 
         # Apply the phase matcher
         try:
-            shift_x, shift_y, metrics = subpixel_phase(s_template, d_search,**kwargs)
+            shift_x, shift_y, metrics = subpixel_phase(s_template, d_search, **kwargs)
         except:
             return None, None, None
         # Apply the shift to d_search and compute the new correspondence location
@@ -410,7 +410,6 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
     source_node = NetworkNode(node_id=sourceid, image_path=res.path)
 
     for measure in measures[1:]:
-        active = True
         cost = None
         destinationid = measure.imageid
 
@@ -447,7 +446,6 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
             continue
 
         # Update the measure
-        measure.active = active
         if new_template_x:
             measure.sample = new_template_x
             measure.line = new_template_y
@@ -485,7 +483,7 @@ def subpixel_register_points(iterative_phase_kwargs={'size': 251},
     """
     session = Session()
     pointids = [point.id for point in session.query(Points)]
-    sessoin.close()
+    session.close()
     for pointid in pointids:
         subpixel_register_point(pointid,
                                 iterative_phase_kwargs=iterative_phase_kwargs,
