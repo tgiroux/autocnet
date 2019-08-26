@@ -1673,9 +1673,9 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         # Get the camera objects to manually join. Keeps the caller from
         # having to remember to bring cameras as well.
         ids = [i[0] for i in sourceimages]
-        cameras = sourcesession.query(Cameras).filter(Cameras.image_id.in_(ids)).all()
-        for c in cameras:
-            destinationsession.merge(c)
+        #cameras = sourcesession.query(Cameras).filter(Cameras.image_id.in_(ids)).all()
+        #for c in cameras:
+        #    destinationsession.merge(c)
 
         destinationsession.commit()
         destinationsession.close()
