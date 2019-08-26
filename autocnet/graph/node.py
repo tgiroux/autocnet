@@ -603,7 +603,7 @@ class NetworkNode(Node):
         Get the number of keypoints from the database
         """
         res = self._from_db(Keypoints)
-        return res.nkeypoints if res is not None else None
+        return res.nkeypoints if res is not None else 0
 
     def create_camera(self):
         # Create the camera entry
