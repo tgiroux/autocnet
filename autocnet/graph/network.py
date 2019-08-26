@@ -1450,31 +1450,31 @@ class NetworkCandidateGraph(CandidateGraph):
     def to_isis(self, path, flistpath=None,sql = """
 SELECT points.id,
         points."pointType",
-        points.apriori,
-        points.adjusted,
+        points."apriori",
+        points."adjusted",
         points."pointIgnore",
-        measures.serialnumber,
-        measures.sample,
-        measures.line,
+        measures."serialnumber",
+        measures."sample",
+        measures."line",
         measures."measureType",
-        measures.imageid,
+        measures."imageid",
         measures."measureIgnore",
         measures."measureJigsawRejected",
-        measures.aprioriline,
-        measures.apriorisample
+        measures."aprioriline",
+        measures."apriorisample"
 FROM measures
-INNER JOIN points ON measures.pointid = points.id
+INNER JOIN points ON measures."pointid" = points."id"
 WHERE
     points."pointIgnore" = False AND
     measures."measureIgnore" = FALSE AND
     measures."measureJigsawRejected" = FALSE AND
-    measures.imageid NOT IN
-        (SELECT measures.imageid
+    measures."imageid" NOT IN
+        (SELECT measures."imageid"
         FROM measures
-        INNER JOIN points ON measures.pointid = points.id
+        INNER JOIN points ON measures."pointid" = points."id"
         WHERE measures."measureIgnore" = False and measures."measureJigsawRejected" = False AND points."pointIgnore" = False
-        GROUP BY measures.imageid
-        HAVING COUNT(DISTINCT measures.pointid)  < 3);
+        GROUP BY measures."imageid"
+        HAVING COUNT(DISTINCT measures."pointid")  < 3);
 """):
         """
         Given a set of points/measures in an autocnet database, generate an ISIS
@@ -1495,8 +1495,7 @@ WHERE
               The sql query to execute in the database.
 
         """
-        #since measures and points tables contain some of the same attributes
-        #read them in seperately and rename
+
         df = pd.read_sql(sql, engine)
 
         #create columns in the dataframe; zeros ensure plio (/protobuf) will
@@ -1549,10 +1548,9 @@ WHERE
         """
         # Ingest isis control net as a df and do some massaging
         data = cnet.from_isis(path)
-        data['jigsawFullRejected'] = data['pointJigsawRejected'] | data['jigsawRejected']
+        data['jigsawFullRejected'] = data['pointJigsawRejected'] | data['measureJigsawRejected']
         data_to_update = data[['id', 'serialnumber', 'jigsawFullRejected', 'sampleResidual', 'lineResidual', 'samplesigma', 'linesigma', 'adjustedCovar', 'apriorisample', 'aprioriline']]
-        data_to_update = data_to_update.rename(columns = {'serialnumber': 'serial', 'jigsawFullRejected': 'jigreject', 'sampleResidual': 'sampler', 'lineResidual': 'liner', 'adjustedCovar': 'covar'})
-        data_to_update['covar'] = data_to_update['covar'].apply(lambda row : list(row))
+        data_to_update['adjustedCovar'] = data_to_update['adjustedCovar'].apply(lambda row : list(row))
         data_to_update['id'] = data_to_update['id'].apply(lambda row : int(row))
 
         # Generate a temp table, update the real table, then drop the temp table
@@ -1560,9 +1558,9 @@ WHERE
 
         sql = """
         UPDATE measures AS f
-        SET jigreject = t.jigreject, sampler = t.sampler, liner = t.liner, samplesigma = t.samplesigma, linesigma = t.linesigma, apriorisample = t.apriorisample, aprioriline = t.aprioriline
+        SET "measureJigsawRejected" = t."jigsawFullRejected", sampler = t."sampleResidual", liner = t."lineResidual", samplesigma = t."samplesigma", linesigma = t."linesigma", apriorisample = t."apriorisample", aprioriline = t."aprioriline"
         FROM temp_measures AS t
-        WHERE f.serial = t.serial AND f.pointid = t.id;
+        WHERE f.serialnumber = t.serialnumber AND f.pointid = t.id;
 
         DROP TABLE temp_measures;
         """
