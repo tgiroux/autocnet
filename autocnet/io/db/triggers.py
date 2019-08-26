@@ -10,7 +10,7 @@ $BODY$
       NEW.footprint_latlon = ST_MAKEVALID(NEW.footprint_latlon);
       RETURN NEW;
     EXCEPTION WHEN OTHERS THEN
-      NEW.active = false;
+      NEW.ignore = true;
       RETURN NEW;
 END;
 $BODY$
@@ -34,14 +34,14 @@ $BODY$
 BEGIN
  IF (SELECT COUNT(*)
 	 FROM MEASURES
-	 WHERE pointid = NEW.pointid AND active = True) < 2
+	 WHERE pointid = NEW.pointid AND "measureIgnore" = False) < 2
  THEN
    UPDATE points
-     SET active = False
+     SET "pointIgnore" = True
 	 WHERE points.id = NEW.pointid;
  ELSE
    UPDATE points
-   SET active = True
+   SET "pointIgnore" = False
    WHERE points.id = NEW.pointid;
  END IF;
 
@@ -65,5 +65,3 @@ try:
   latitudinal_srid = config['spatial']['latitudinal_srid']
 except:
   latitudinal_srid = None
-
-

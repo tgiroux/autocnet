@@ -119,7 +119,7 @@ def test_points_exists(tables):
     {'pointtype':2, 'identifier':'123abc'},
     {'pointtype':3, 'apriori':Point(0,0,0)},
     {'pointtype':3, 'adjusted':Point(0,0,0)},
-    {'pointtype':2, 'adjusted':Point(1,1,1), 'active':True}
+    {'pointtype':2, 'adjusted':Point(1,1,1), 'ignore':False}
 ])
 def test_create_point(session, data):
     p = model.Points.create(session, **data)
@@ -189,12 +189,12 @@ def test_broken_bad_geom(session):
     i = model.Images.create(session, footprint_latlon=geom,
                                       serial = 'serial')
     resp = session.query(model.Images).filter(model.Images.id==i.id).one()
-    assert resp.active == False
+    assert resp.ignore == True
 
 def test_fix_bad_geom(session):
     geom = MultiPolygon([Polygon([(0,0), (0,1), (1,1), (0,1), (1,1), (1,0), (0,0) ])])
     i = model.Images.create(session, footprint_latlon=geom,
                                      serial = 'serial' )
     resp = session.query(model.Images).filter(model.Images.id==i.id).one()
-    assert resp.active == True
+    assert resp.ignore == False
     assert resp.footprint_latlon == MultiPolygon([Polygon([(0,0), (0,1), (1,1), (1,0), (0,0) ])])

@@ -1447,47 +1447,32 @@ class NetworkCandidateGraph(CandidateGraph):
         for _, n in self.nodes(data='data'):
             n.generate_vrt(**kwargs)
 
-    def to_isis(self, path, flistpath=None,points_sql = """
+    def to_isis(self, path, flistpath=None,sql = """
 SELECT points.id,
-        points.pointtype,
+        points."pointType",
         points.apriori,
         points.adjusted,
-        points.active
-FROM measures
-INNER JOIN points ON measures.pointid = points.id
-WHERE
-    points.active = True AND
-    measures.active=TRUE AND
-    measures.jigreject=FALSE AND
-    measures.imageid NOT IN
-        (SELECT measures.imageid
-        FROM measures
-        INNER JOIN points ON measures.pointid = points.id
-        WHERE measures.active = true and measures.jigreject = false AND points.active = True
-        GROUP BY measures.imageid
-        HAVING COUNT(DISTINCT measures.pointid)  < 3);
-""",
-measures_sql="""
-SELECT measures.serial,
+        points."pointIgnore",
+        measures.serialnumber,
         measures.sample,
         measures.line,
-        measures.measuretype,
+        measures."measureType",
         measures.imageid,
-        measures.active,
-        measures.jigreject,
+        measures."measureIgnore",
+        measures."measureJigsawRejected",
         measures.aprioriline,
         measures.apriorisample
 FROM measures
 INNER JOIN points ON measures.pointid = points.id
 WHERE
-    points.active = True AND
-    measures.active=TRUE AND
-    measures.jigreject=FALSE AND
+    points."pointIgnore" = False AND
+    measures."measureIgnore" = FALSE AND
+    measures."measureJigsawRejected" = FALSE AND
     measures.imageid NOT IN
         (SELECT measures.imageid
         FROM measures
         INNER JOIN points ON measures.pointid = points.id
-        WHERE measures.active = true and measures.jigreject = false AND points.active = True
+        WHERE measures."measureIgnore" = False and measures."measureJigsawRejected" = False AND points."pointIgnore" = False
         GROUP BY measures.imageid
         HAVING COUNT(DISTINCT measures.pointid)  < 3);
 """):
@@ -1512,16 +1497,7 @@ WHERE
         """
         #since measures and points tables contain some of the same attributes
         #read them in seperately and rename
-        points_df = pd.read_sql(points_sql, engine)
-        points_df.rename(columns={'pointtype' : 'pointType', 'jigreject' : 'pointJigsawRejected'}, inplace=True)
-        points_df['pointIgnore'] = ~points_df['active']
-
-        measures_df = pd.read_sql(measures_sql, engine)
-        measures_df.rename(columns={'serial' : 'serialnumber', 'measuretype' : 'measureType',
-                                    'jigreject' : 'measureJigsawRejected'}, inplace=True)
-        measures_df['measureIgnore'] = ~measures_df['active']
-        #combine for passing to plio
-        df = pd.concat([points_df, measures_df], axis=1, sort=False)
+        df = pd.read_sql(sql, engine)
 
         #create columns in the dataframe; zeros ensure plio (/protobuf) will
         #ignore unless populated with alternate values
@@ -1559,6 +1535,7 @@ WHERE
 
         cnet.to_isis(df, path, targetname=target)
         cnet.write_filelist(fpaths, path=flistpath)
+        return df
 
     @staticmethod
     def update_from_jigsaw(session, path):
@@ -1835,21 +1812,6 @@ WHERE
         if isinstance(cnet, str):
             cnet = from_isis(cnet)
 
-        # rename some columns
-        newcols = []
-        for i, c in enumerate(cnet.columns):
-            if i == 1:
-                newcols.append('pointtype')
-            elif i == 5:
-                newcols.append('pointignore')
-            elif i == 6:
-                newcols.append('pointjigsawRejected')
-            elif i == 25:
-                newcols.append('measuretype')
-            else:
-                newcols.append(c)
-        cnet.columns = newcols
-
         cnetpoints = cnet.groupby('id')
         points = []
         session = Session()
@@ -1859,14 +1821,14 @@ WHERE
                 res = session.query(Images).filter(Images.serial == row.serialnumber).one()
                 return Measures(pointid=id,
                          imageid=int(res.id), # Need to grab this
-                         measuretype=int(row.measuretype),
+                         measuretype=int(row.measureType),
                          serial=row.serialnumber,
                          sample=float(row['sample']),
                          line=float(row['line']),
                          sampler=float(row.sampleResidual),
                          liner=float(row.lineResidual),
-                         active=not row.ignore, # active = ~ignored
-                         jigreject=row.jigsawRejected,
+                         ignore=row.measureIgnore,
+                         jigreject=row.measureJigsawRejected,
                          aprioriline=float(row.aprioriline),
                          apriorisample=float(row.apriorisample),
                          linesigma=float(row.linesigma),
@@ -1879,10 +1841,10 @@ WHERE
             lon, lat, alt = pyproj.transform(ecef, lla, x, y, z)
 
             point = Points(identifier=id,
-                           active=not row.pointignore, # active = ~ignored
+                           ignore=row.pointIgnore,
                            apriori= shapely.geometry.Point(float(row.aprioriX), float(row.aprioriY), float(row.aprioriZ)),
                            adjusted= shapely.geometry.Point(float(row.adjustedX),float(row.adjustedY),float(row.adjustedZ)),
-                           pointtype=float(row.pointtype))
+                           pointtype=float(row.pointType))
 
             point.measures = list(measures)
             points.append(point)
