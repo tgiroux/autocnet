@@ -1535,7 +1535,6 @@ WHERE
 
         cnet.to_isis(df, path, targetname=target)
         cnet.write_filelist(fpaths, path=flistpath)
-        return df
 
     @staticmethod
     def update_from_jigsaw(session, path):
