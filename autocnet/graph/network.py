@@ -1447,11 +1447,49 @@ class NetworkCandidateGraph(CandidateGraph):
         for _, n in self.nodes(data='data'):
             n.generate_vrt(**kwargs)
 
-    def to_isis(self, path, flistpath=None,sql = """
-SELECT points.id, measures.serial, points.pointtype, points.apriori, points.adjusted,
-measures.sample, measures.line, measures.measuretype, measures.imageid
-FROM measures INNER JOIN points ON measures.pointid = points.id
-WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE;
+    def to_isis(self, path, flistpath=None,points_sql = """
+SELECT points.id,
+        points.pointtype,
+        points.apriori,
+        points.adjusted,
+        points.active
+FROM measures
+INNER JOIN points ON measures.pointid = points.id
+WHERE
+    points.active = True AND
+    measures.active=TRUE AND
+    measures.jigreject=FALSE AND
+    measures.imageid NOT IN
+        (SELECT measures.imageid
+        FROM measures
+        INNER JOIN points ON measures.pointid = points.id
+        WHERE measures.active = true and measures.jigreject = false AND points.active = True
+        GROUP BY measures.imageid
+        HAVING COUNT(DISTINCT measures.pointid)  < 3);
+""",
+measures_sql="""
+SELECT measures.serial,
+        measures.sample,
+        measures.line,
+        measures.measuretype,
+        measures.imageid,
+        measures.active,
+        measures.jigreject,
+        measures.aprioriline,
+        measures.apriorisample
+FROM measures
+INNER JOIN points ON measures.pointid = points.id
+WHERE
+    points.active = True AND
+    measures.active=TRUE AND
+    measures.jigreject=FALSE AND
+    measures.imageid NOT IN
+        (SELECT measures.imageid
+        FROM measures
+        INNER JOIN points ON measures.pointid = points.id
+        WHERE measures.active = true and measures.jigreject = false AND points.active = True
+        GROUP BY measures.imageid
+        HAVING COUNT(DISTINCT measures.pointid)  < 3);
 """):
         """
         Given a set of points/measures in an autocnet database, generate an ISIS
@@ -1472,9 +1510,18 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
               The sql query to execute in the database.
 
         """
-        df = pd.read_sql(sql, engine)
-        df.rename(columns={'imageid':'image_index','id':'point_id', 'pointtype' : 'type',
-            'sample':'x', 'line':'y', 'serial': 'serialnumber'}, inplace=True)
+        #since measures and points tables contain some of the same attributes
+        #read them in seperately and rename
+        points_df = pd.read_sql(points_sql, engine)
+        points_df.rename(columns={'pointtype' : 'pointType', 'jigreject' : 'pointJigsawRejected'}, inplace=True)
+        points_df['pointIgnore'] = ~points_df['active']
+
+        measures_df = pd.read_sql(measures_sql, engine)
+        measures_df.rename(columns={'serial' : 'serialnumber', 'measuretype' : 'measureType',
+                                    'jigreject' : 'measureJigsawRejected'}, inplace=True)
+        measures_df['measureIgnore'] = ~measures_df['active']
+        #combine for passing to plio
+        df = pd.concat([points_df, measures_df], axis=1, sort=False)
 
         #create columns in the dataframe; zeros ensure plio (/protobuf) will
         #ignore unless populated with alternate values
@@ -1489,7 +1536,7 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         #recalculate the control point lat/lon from control measures which where
         #"massaged" by the phase and template matcher.
         for i, row in df.iterrows():
-            if row['type'] == 3 or row['type'] == 4:
+            if row['pointType'] == 3 or row['pointType'] == 4:
                 apriori_geom = swkb.loads(row['apriori'], hex=True)
                 row['aprioriX'] = apriori_geom.x
                 row['aprioriY'] = apriori_geom.y
@@ -1504,8 +1551,14 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
             flistpath = os.path.splitext(path)[0] + '.lis'
         target = config['spatial'].get('target', None)
 
+        ids = df['imageid'].unique()
+        fpaths = [self.nodes[i]['data']['image_path'] for i in ids]
+        for f in self.files:
+            if f not in fpaths:
+                warnings.warn(f'{f} in candidate graph but not in output network.')
+
         cnet.to_isis(df, path, targetname=target)
-        cnet.write_filelist(self.files, path=flistpath)
+        cnet.write_filelist(fpaths, path=flistpath)
 
     @staticmethod
     def update_from_jigsaw(session, path):
