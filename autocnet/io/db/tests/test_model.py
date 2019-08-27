@@ -157,7 +157,7 @@ def test_measures_exists(tables):
 @patch('plio.io.io_controlnetwork.from_isis', return_value = pd.DataFrame.from_dict({'id': [1],
                                                                                      'serialnumber': ['ISISSERIAL'],
                                                                                      'pointJigsawRejected': [False],
-                                                                                     'jigsawRejected': [False],
+                                                                                     'measureJigsawRejected': [False],
                                                                                      'sampleResidual': [0.1],
                                                                                      'lineResidual': [0.1],
                                                                                      'samplesigma': [0],

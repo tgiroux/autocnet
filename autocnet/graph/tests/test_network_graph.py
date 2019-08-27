@@ -16,7 +16,7 @@ def cnet():
             'serialnumber' : ['BRUH'],
             'measureJigsawRejected': [False],
             'sampleResidual' : [0.1],
-            'pointIngore' : [False],
+            'pointIgnore' : [False],
             'pointJigsawRejected': [False],
             'lineResidual' : [0.1],
             'linesigma' : [0],
@@ -40,7 +40,7 @@ def test_creation():
     ncg = NetworkCandidateGraph()
 
 
-@pytest.mark.parametrize("image_data, expected_npoints", [({'id':1, 'serial': 'BRUH'}, 1)])
+@pytest.mark.parametrize("image_data, expected_npoints", [({'id':1, 'serialnumber': 'BRUH'}, 1)])
 def test_place_points_from_cnet(session, cnet, image_data, expected_npoints):
     model.Images.create(session, **image_data)
     ncg = NetworkCandidateGraph.from_database()
