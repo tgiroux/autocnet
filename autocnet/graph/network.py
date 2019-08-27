@@ -1448,10 +1448,33 @@ class NetworkCandidateGraph(CandidateGraph):
             n.generate_vrt(**kwargs)
 
     def to_isis(self, path, flistpath=None,sql = """
-SELECT points.id, measures.serial, points.pointtype, points.apriori, points.adjusted,
-measures.sample, measures.line, measures.measuretype, measures.imageid
-FROM measures INNER JOIN points ON measures.pointid = points.id
-WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE;
+SELECT points.id,
+        points."pointType",
+        points."apriori",
+        points."adjusted",
+        points."pointIgnore",
+        measures."serialnumber",
+        measures."sample",
+        measures."line",
+        measures."measureType",
+        measures."imageid",
+        measures."measureIgnore",
+        measures."measureJigsawRejected",
+        measures."aprioriline",
+        measures."apriorisample"
+FROM measures
+INNER JOIN points ON measures."pointid" = points."id"
+WHERE
+    points."pointIgnore" = False AND
+    measures."measureIgnore" = FALSE AND
+    measures."measureJigsawRejected" = FALSE AND
+    measures."imageid" NOT IN
+        (SELECT measures."imageid"
+        FROM measures
+        INNER JOIN points ON measures."pointid" = points."id"
+        WHERE measures."measureIgnore" = False and measures."measureJigsawRejected" = False AND points."pointIgnore" = False
+        GROUP BY measures."imageid"
+        HAVING COUNT(DISTINCT measures."pointid")  < 3);
 """):
         """
         Given a set of points/measures in an autocnet database, generate an ISIS
@@ -1472,9 +1495,8 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
               The sql query to execute in the database.
 
         """
+
         df = pd.read_sql(sql, engine)
-        df.rename(columns={'imageid':'image_index','id':'point_id', 'pointtype' : 'type',
-            'sample':'x', 'line':'y', 'serial': 'serialnumber'}, inplace=True)
 
         #create columns in the dataframe; zeros ensure plio (/protobuf) will
         #ignore unless populated with alternate values
@@ -1489,7 +1511,7 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         #recalculate the control point lat/lon from control measures which where
         #"massaged" by the phase and template matcher.
         for i, row in df.iterrows():
-            if row['type'] == 3 or row['type'] == 4:
+            if row['pointType'] == 3 or row['pointType'] == 4:
                 apriori_geom = swkb.loads(row['apriori'], hex=True)
                 row['aprioriX'] = apriori_geom.x
                 row['aprioriY'] = apriori_geom.y
@@ -1504,8 +1526,14 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
             flistpath = os.path.splitext(path)[0] + '.lis'
         target = config['spatial'].get('target', None)
 
+        ids = df['imageid'].unique()
+        fpaths = [self.nodes[i]['data']['image_path'] for i in ids]
+        for f in self.files:
+            if f not in fpaths:
+                warnings.warn(f'{f} in candidate graph but not in output network.')
+
         cnet.to_isis(df, path, targetname=target)
-        cnet.write_filelist(self.files, path=flistpath)
+        cnet.write_filelist(fpaths, path=flistpath)
 
     @staticmethod
     def update_from_jigsaw(session, path):
@@ -1520,10 +1548,8 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         """
         # Ingest isis control net as a df and do some massaging
         data = cnet.from_isis(path)
-        data['jigsawFullRejected'] = data['pointJigsawRejected'] | data['jigsawRejected']
-        data_to_update = data[['id', 'serialnumber', 'jigsawFullRejected', 'sampleResidual', 'lineResidual', 'samplesigma', 'linesigma', 'adjustedCovar', 'apriorisample', 'aprioriline']]
-        data_to_update = data_to_update.rename(columns = {'serialnumber': 'serial', 'jigsawFullRejected': 'jigreject', 'sampleResidual': 'sampler', 'lineResidual': 'liner', 'adjustedCovar': 'covar'})
-        data_to_update['covar'] = data_to_update['covar'].apply(lambda row : list(row))
+        data_to_update = data[['id', 'serialnumber', 'measureJigsawRejected', 'sampleResidual', 'lineResidual', 'samplesigma', 'linesigma', 'adjustedCovar', 'apriorisample', 'aprioriline']]
+        data_to_update['adjustedCovar'] = data_to_update['adjustedCovar'].apply(lambda row : list(row))
         data_to_update['id'] = data_to_update['id'].apply(lambda row : int(row))
 
         # Generate a temp table, update the real table, then drop the temp table
@@ -1531,9 +1557,9 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
 
         sql = """
         UPDATE measures AS f
-        SET jigreject = t.jigreject, sampler = t.sampler, liner = t.liner, samplesigma = t.samplesigma, linesigma = t.linesigma, apriorisample = t.apriorisample, aprioriline = t.aprioriline
+        SET "measureJigsawRejected" = t."measureJigsawRejected", sampler = t."sampleResidual", liner = t."lineResidual", samplesigma = t."samplesigma", linesigma = t."linesigma", apriorisample = t."apriorisample", aprioriline = t."aprioriline"
         FROM temp_measures AS t
-        WHERE f.serial = t.serial AND f.pointid = t.id;
+        WHERE f.serialnumber = t.serialnumber AND f.pointid = t.id;
 
         DROP TABLE temp_measures;
         """
@@ -1782,21 +1808,6 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         if isinstance(cnet, str):
             cnet = from_isis(cnet)
 
-        # rename some columns
-        newcols = []
-        for i, c in enumerate(cnet.columns):
-            if i == 1:
-                newcols.append('pointtype')
-            elif i == 5:
-                newcols.append('pointignore')
-            elif i == 6:
-                newcols.append('pointjigsawRejected')
-            elif i == 25:
-                newcols.append('measuretype')
-            else:
-                newcols.append(c)
-        cnet.columns = newcols
-
         cnetpoints = cnet.groupby('id')
         points = []
         session = Session()
@@ -1806,14 +1817,14 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
                 res = session.query(Images).filter(Images.serial == row.serialnumber).one()
                 return Measures(pointid=id,
                          imageid=int(res.id), # Need to grab this
-                         measuretype=int(row.measuretype),
+                         measuretype=int(row.measureType),
                          serial=row.serialnumber,
                          sample=float(row['sample']),
                          line=float(row['line']),
                          sampler=float(row.sampleResidual),
                          liner=float(row.lineResidual),
-                         active=not row.ignore, # active = ~ignored
-                         jigreject=row.jigsawRejected,
+                         ignore=row.measureIgnore,
+                         jigreject=row.measureJigsawRejected,
                          aprioriline=float(row.aprioriline),
                          apriorisample=float(row.apriorisample),
                          linesigma=float(row.linesigma),
@@ -1826,10 +1837,10 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
             lon, lat, alt = pyproj.transform(ecef, lla, x, y, z)
 
             point = Points(identifier=id,
-                           active=not row.pointignore, # active = ~ignored
+                           ignore=row.pointIgnore,
                            apriori= shapely.geometry.Point(float(row.aprioriX), float(row.aprioriY), float(row.aprioriZ)),
                            adjusted= shapely.geometry.Point(float(row.adjustedX),float(row.adjustedY),float(row.adjustedZ)),
-                           pointtype=float(row.pointtype))
+                           pointtype=float(row.pointType))
 
             point.measures = list(measures)
             points.append(point)

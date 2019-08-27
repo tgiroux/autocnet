@@ -397,7 +397,7 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
            template matcher.
 
     threshold : numeric
-                measures with a cost <= the threshold are marked as active=False in
+                measures with a cost <= the threshold are marked as ignore=True in
                 the database.
     """
     session = Session()
@@ -424,7 +424,7 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
                                                                 destination_node.geodata,
                                                                 **iterative_phase_kwargs)
         if new_phase_x == None:
-            measure.active = False # Unable to phase match
+            measure.ignore = True # Unable to phase match
             continue
 
         new_template_x, new_template_y, template_metric = subpixel_template(source.sample,
@@ -435,14 +435,14 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
                                                                 destination_node.geodata,
                                                                 **subpixel_template_kwargs)
         if new_template_x == None:
-            measure.active = False # Unable to template match
+            measure.ignore = True # Unable to template match
             continue
 
         dist = np.linalg.norm([new_phase_x-new_template_x, new_phase_y-new_template_y])
         cost = cost_func(dist, template_metric)
 
         if cost <= threshold:
-            measure.active = False # Threshold criteria not met
+            measure.ignore = True # Threshold criteria not met
             continue
 
         # Update the measure
@@ -478,7 +478,7 @@ def subpixel_register_points(iterative_phase_kwargs={'size': 251},
            template matcher.
 
     threshold : numeric
-                measures with a cost <= the threshold are marked as active=False in
+                measures with a cost <= the threshold are marked as ignore=True in
                 the database.
     """
     session = Session()
@@ -519,7 +519,7 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
            template matcher.
 
     threshold : numeric
-                measures with a cost <= the threshold are marked as active=False in
+                measures with a cost <= the threshold are marked as ignore=True in
                 the database.
 
     exclude : str

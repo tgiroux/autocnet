@@ -131,7 +131,7 @@ class Edges(BaseMixin, Base):
     destination = Column(Integer)
     ring = Column(ArrayType())
     fundamental = Column(ArrayType())
-    active = Column(Boolean)
+    ignore = Column(Boolean)
     masks = Column(Json())
 
 class Costs(BaseMixin, Base):
@@ -187,7 +187,7 @@ class Images(BaseMixin, Base):
     name = Column(String)
     path = Column(String)
     serial = Column(String, unique=True)
-    active = Column(Boolean, default=True)
+    ignore = Column(Boolean, default=False)
     _footprint_latlon = Column("footprint_latlon", Geometry('MultiPolygon', srid=latitudinal_srid, dimension=2, spatial_index=True))
     footprint_bodyfixed = Column(Geometry('MULTIPOLYGON', dimension=2))
     cam_type = Column(String)
@@ -272,11 +272,11 @@ class PointType(enum.IntEnum):
 class Points(BaseMixin, Base):
     __tablename__ = 'points'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    _pointtype = Column("pointtype", IntEnum(PointType), nullable=False)  # 2, 3, 4 - Could be an enum in the future, map str to int in a decorator
+    _pointtype = Column("pointType", IntEnum(PointType), nullable=False)  # 2, 3, 4 - Could be an enum in the future, map str to int in a decorator
     identifier = Column(String, unique=True)
     _geom = Column("geom", Geometry('POINT', srid=latitudinal_srid, dimension=2, spatial_index=True))
     cam_type = Column(String)
-    active = Column(Boolean, default=True)
+    ignore = Column("pointIgnore", Boolean, default=False)
     _apriori = Column("apriori", Geometry('POINTZ', srid=rectangular_srid, dimension=3, spatial_index=False))
     _adjusted = Column("adjusted", Geometry('POINTZ', srid=rectangular_srid, dimension=3, spatial_index=False))
     measures = relationship('Measures')
@@ -350,14 +350,14 @@ class Measures(BaseMixin, Base):
     id = Column(Integer,primary_key=True, autoincrement=True)
     pointid = Column(Integer, ForeignKey('points.id'), nullable=False)
     imageid = Column(Integer, ForeignKey('images.id'))
-    serial = Column(String, nullable=False)
-    _measuretype = Column("measuretype", IntEnum(MeasureType), nullable=False)  # [0,3]  # Enum as above
+    serial = Column("serialnumber", String, nullable=False)
+    _measuretype = Column("measureType", IntEnum(MeasureType), nullable=False)  # [0,3]  # Enum as above
     sample = Column(Float, nullable=False)
     line = Column(Float, nullable=False)
     sampler = Column(Float)  # Sample Residual
     liner = Column(Float)  # Line Residual
-    active = Column(Boolean, default=True)
-    jigreject = Column(Boolean, default=False)  # jigsaw rejected
+    ignore = Column("measureIgnore", Boolean, default=False)
+    jigreject = Column("measureJigsawRejected", Boolean, default=False)  # jigsaw rejected
     aprioriline = Column(Float)
     apriorisample = Column(Float)
     samplesigma = Column(Float)
