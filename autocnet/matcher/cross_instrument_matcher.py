@@ -59,7 +59,7 @@ def generate_ground_points(ground_database, nspts_func=lambda x: int(round(x,1)*
     ground_session = Ground_Session()
 
     session = Session()
-    ground_poly = wkt.loads(session.query(functions.ST_AsText(functions.ST_Union(Images.footprint_latlon))).one()[0])
+    ground_poly = wkt.loads(session.query(functions.ST_AsText(functions.ST_Union(Images.geom))).one()[0])
     session.close()
 
     image_fp_bounds = list(ground_poly.bounds)
@@ -131,7 +131,7 @@ def propagate_control_network(base_cnet):
     """
 
     """
-    dest_images = gpd.GeoDataFrame.from_postgis("select * from images", engine, geom_col="footprint_latlon")
+    dest_images = gpd.GeoDataFrame.from_postgis("select * from images", engine, geom_col="geom")
     spatial_index = dest_images.sindex
     groups = base_cnet.groupby('pointid').groups
     # append to list if images, mostly used for working with the network in python

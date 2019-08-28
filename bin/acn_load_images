@@ -55,9 +55,9 @@ except:
 def create_footprint(config, geodata, camera):
     boundary = generate_boundary(geodata.raster_size[::-1])  # yx to xy
     dem = GeoDataset(config['spatial']['dem'])
-    footprint_latlon = generate_latlon_footprint(camera, boundary, dem=dem)
-    footprint_latlon.FlattenTo2D()
-    return footprint_latlon
+    geom = generate_latlon_footprint(camera, boundary, dem=dem)
+    geom.FlattenTo2D()
+    return geom
 
 def create_camera(config, geodata, imagepath):
     # Create the camera entry
@@ -107,7 +107,7 @@ def main(msg, config):
             serial = generate_serial_number(path)
             i = Images(name=geodata.file_name,
                     path=path,
-                    footprint_latlon=fp,
+                    geom=fp,
                     cameras=dbcam,
                     serial=serial)
             images.append(i)

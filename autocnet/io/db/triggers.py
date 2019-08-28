@@ -7,7 +7,7 @@ CREATE OR REPLACE FUNCTION validate_geom()
   RETURNS trigger AS
 $BODY$
   BEGIN
-      NEW.footprint_latlon = ST_MAKEVALID(NEW.footprint_latlon);
+      NEW.geom = ST_MAKEVALID(NEW.geom);
       RETURN NEW;
     EXCEPTION WHEN OTHERS THEN
       NEW.ignore = true;
