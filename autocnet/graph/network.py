@@ -1684,7 +1684,7 @@ WHERE
         >>> geom = 'LINESTRING(145 10, 145 11, 146 11, 146 10, 145 10)'
         >>> srid = 949900
         >>> outpath = '/scratch/jlaura/fromdb'
-        >>> query = f"SELECT * FROM Images WHERE ST_INTERSECTS(footprint_latlon, ST_Polygon(ST_GeomFromText('{geom}'), {srid})) = TRUE"
+        >>> query = f"SELECT * FROM Images WHERE ST_INTERSECTS(geom, ST_Polygon(ST_GeomFromText('{geom}'), {srid})) = TRUE"
         >>> ncg = NetworkCandidateGraph.from_remote_database(source_db_config, outpath, query_string=query)
         """
 
@@ -1733,11 +1733,11 @@ WHERE
         ## Spatial Query
         This example selects those images that intersect a given bounding polygon.  The polygon is
         specified as a Well Known Text LINESTRING with the first and last points being the same.
-        The query says, select the footprint_latlon (the bounding polygons in the database) that
+        The query says, select the geom (the bounding polygons in the database) that
         intersect the user provided polygon (the LINESTRING) in the given spatial reference system
         (SRID), 949900.
 
-        SELECT * FROM Images WHERE ST_INTERSECTS(footprint_latlon, ST_Polygon(ST_GeomFromText('LINESTRING(159 10, 159 11, 160 11, 160 10, 159 10)'),949900)) = TRUE
+        SELECT * FROM Images WHERE ST_INTERSECTS(geom, ST_Polygon(ST_GeomFromText('LINESTRING(159 10, 159 11, 160 11, 160 10, 159 10)'),949900)) = TRUE
 
         ## Select from a specific orbit
         This example selects those images that are from a particular orbit. In this case,
@@ -1750,7 +1750,7 @@ WHERE
         composite_query = '''WITH i as ({}) SELECT i1.id
         as i1_id,i1.path as i1_path, i2.id as i2_id, i2.path as i2_path
         FROM i  as i1, i as i2
-        WHERE ST_INTERSECTS(i1.footprint_latlon, i2.footprint_latlon) = TRUE
+        WHERE ST_INTERSECTS(i1.geom, i2.geom) = TRUE
         AND i1.id < i2.id'''.format(query_string)
 
         session = Session()

@@ -524,7 +524,7 @@ class NetworkNode(Node):
             # Create the image
             i = Images(name=kwargs['image_name'],
                        path=kwargs['image_path'],
-                       footprint_latlon=fp,
+                       geom=fp,
                        keypoints=kps,
                        cameras=cam,
                        serial=self.isis_serial,

@@ -188,7 +188,7 @@ class Images(BaseMixin, Base):
     path = Column(String)
     serial = Column(String, unique=True)
     ignore = Column(Boolean, default=False)
-    _footprint_latlon = Column("footprint_latlon", Geometry('MultiPolygon', srid=latitudinal_srid, dimension=2, spatial_index=True))
+    _geom = Column("geom", Geometry('MultiPolygon', srid=latitudinal_srid, dimension=2, spatial_index=True))
     footprint_bodyfixed = Column(Geometry('MULTIPOLYGON', dimension=2))
     cam_type = Column(String)
     #footprint_bodyfixed = Column(Geometry('POLYGON',dimension=3))
@@ -200,31 +200,31 @@ class Images(BaseMixin, Base):
 
     def __repr__(self):
         try:
-            footprint = to_shape(self.footprint_latlon).__geo_interface__
+            footprint = to_shape(self.geom).__geo_interface__
         except:
             footprint = None
         return json.dumps({'id':self.id,
                 'name':self.name,
                 'path':self.path,
-                'footprint_latlon':footprint,
+                'geom':footprint,
                 'footprint_bodyfixed':self.footprint_bodyfixed})
 
     @hybrid_property
-    def footprint_latlon(self):
+    def geom(self):
         try:
-            return to_shape(self._footprint_latlon)
+            return to_shape(self._geom)
         except:
-            return self._footprint_latlon
+            return self._geom
 
-    @footprint_latlon.setter
-    def footprint_latlon(self, geom):
-        if isinstance(geom, osgeo.ogr.Geometry):
+    @geom.setter
+    def geom(self, newgeom):
+        if isinstance(newgeom, osgeo.ogr.Geometry):
             # If an OGR geom, convert to shapely
-            geom = shapely.wkt.loads(geom.ExportToWkt())
-        if geom is None:
-            self._footprint_latlon = None
+            newgeom = shapely.wkt.loads(newgeom.ExportToWkt())
+        if newgeom is None:
+            self._geom = None
         else:
-            self._footprint_latlon = from_shape(geom, srid=latitudinal_srid)
+            self._geom = from_shape(newgeom, srid=latitudinal_srid)
 
 class Overlay(BaseMixin, Base):
     __tablename__ = 'overlay'
