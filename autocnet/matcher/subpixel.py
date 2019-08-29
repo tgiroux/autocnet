@@ -367,8 +367,8 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
         dy += (shift_y + dyr)
 
         # Break if the solution has converged
-        size[0] -= reduction
-        size[1] -= reduction
+        size = (size[0] - reduction, size[1] - reduction)
+
         dist = np.linalg.norm([dsample-dx, dline-dy])
         if min(size) < 1:
             return None, None, None
