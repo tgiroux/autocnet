@@ -450,6 +450,12 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
             measure.sample = new_template_x
             measure.line = new_template_y
             measure.weight = cost
+
+        # In case this is a second run, set the ignore to False if this
+        # measures passed. Also, set the source measure back to ignore=False
+        measure.ignore = False
+        source.ignore = False
+
     session.commit()
     session.close()
 
@@ -494,6 +500,7 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
                                      subpixel_template_kwargs={'image_size':(251,251)},
                                      cost_func=lambda x,y: 1/x**2 * y,
                                      threshold=0.005,
+                                     filters = {},
                                      walltime='00:10:00',
                                      chunksize=1000,
                                      exclude=None):
@@ -521,7 +528,9 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
     threshold : numeric
                 measures with a cost <= the threshold are marked as ignore=True in
                 the database.
-
+    filters : dict
+              with keys equal to attributes of the Points mapping and values
+              equal to some criteria.
     exclude : str
               string containing the name(s) of any slurm nodes to exclude when
               completing a cluster job. (e.g.: 'gpu1' or 'gpu1,neb12')
@@ -534,9 +543,12 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
     # Push the job messages onto the queue
     queuename = config['redis']['processing_queue']
 
-
     session = Session()
-    for i, point in enumerate(session.query(Points)):
+    query = session.query(Points)
+    for attr, value in filters.items():
+        query = query.filter(getattr(Points, attr)==value)
+    res = query.all()
+    for i, point in enumerate(res):
         msg = {'id' : point.id,
                'iterative_phase_kwargs' : iterative_phase_kwargs,
                'subpixel_template_kwargs' : subpixel_template_kwargs,
