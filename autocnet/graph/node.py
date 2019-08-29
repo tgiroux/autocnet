@@ -658,6 +658,8 @@ class NetworkNode(Node):
             # get ISIS footprint if possible
             if utils.find_in_dict(self.geodata.metadata, "Polygon"):
                 footprint_latlon =  shapely.wkt.loads(self.geodata.footprint.ExportToWkt())
+                if isinstance(footprint_latlon, shapely.geometry.Polygon):
+                    footprint_latlon = shapely.geometry.MultiPolygon(list(footprint_latlon))
                 cam_type = 'isis'
                 return footprint_latlon, cam_type
             # Get CSM footprint
