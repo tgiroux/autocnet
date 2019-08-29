@@ -329,26 +329,29 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
     # get initial destination location
     dsample = dx
     dline = dy
+    if isinstance(size, int):
+        size = (size, size)
     while True:
         s_template, _, _ = clip_roi(s_img, sx, sy,
-                                   size_x=size, size_y=size)
+                                   size_x=size[0], size_y=size[1])
         d_search, dxr, dyr = clip_roi(d_img, dx, dy,
-                                 size_x=size, size_y=size)
+                                 size_x=size[0], size_y=size[1])
 
         if (s_template is None) or (d_search is None):
             return None, None, None
         if s_template.shape != d_search.shape:
             s_size = s_template.shape
             d_size = d_search.shape
-            updated_size = int(min(s_size + d_size) / 2)
+            updated_size_x = int(min(s_size[1] + d_size[1]))  # Why is this /2?
+            updated_size_y = int(min(s_size[0] + d_size[0]))
             # Since the image is smaller than the requested size, set the size to
             # the current maximum image size and reduce from there on potential
             # future iterations.
-            size = updated_size
+            size = (updated_size_x, updated_size_y)
             s_template, _, _ = clip_roi(s_template, sx, sy,
-                                 size_x=updated_size, size_y=updated_size)
+                                 size_x=size[0], size_y=size[1])
             d_search, dxr, dyr = clip_roi(d_search, dx, dy,
-                                size_x=updated_size, size_y=updated_size)
+                                size_x=size[0], size_y=size[1])
             if (s_template is None) or (d_search is None):
                 return None, None, None
 
@@ -362,9 +365,10 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
         dy += (shift_y + dyr)
 
         # Break if the solution has converged
-        size -= reduction
+        size[0] -= reduction
+        size[1] -= reduction
         dist = np.linalg.norm([dsample-dx, dline-dy])
-        if size <1:
+        if min(size) < 1:
             return None, None, None
         if abs(shift_x) <= convergence_threshold and\
            abs(shift_y) <= convergence_threshold and\
