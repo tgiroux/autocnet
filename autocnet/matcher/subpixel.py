@@ -304,8 +304,10 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
             A plio geodata object from which the template is extracted
     d_img : object
             A plio geodata object from which the search is extracted
-    size : int
-           One half of the total size of the template, so a 251 default results in a 502 pixel search space
+    size : int, tuple
+           One half of the total size of the template, so a 251 default results in a 502 pixel search space.
+           If an int, the template is square. If a tuple, in the form (x,y), is passed an 
+           irregularly shaped template can be used.
     reduction : int
                 With each recursive call to this func, the size is reduced by this amount
     convergence_threshold : float
