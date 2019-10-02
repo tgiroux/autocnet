@@ -404,8 +404,7 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
                 the database.
     """
     session = Session()
-    point = session.query(Points).filter(Points.id == pointid).one()
-    measures = point.measures
+    measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
     source = measures[0]
 
     sourceid = source.imageid
