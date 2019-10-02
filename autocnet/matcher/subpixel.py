@@ -9,7 +9,7 @@ from plurmy import Slurm
 from autocnet import Session, config
 from autocnet.matcher import naive_template
 from autocnet.matcher import ciratefi
-from autocnet.io.db.model import Points, Images, JsonEncoder
+from autocnet.io.db.model import Measures, Points, Images, JsonEncoder
 from autocnet.graph.node import NetworkNode
 
 import geopandas as gpd
@@ -230,9 +230,6 @@ def subpixel_template(sx, sy, dx, dy, s_img, d_img, image_size=(251, 251), templ
 
     return dx, dy, metrics
 
-    x_shift, y_shift, strength = naive_template.pattern_match(template, image, **kwargs)
-    return x_shift, y_shift, strength
-
 def subpixel_ciratefi(sx, sy, dx, dy, s_img, d_img, search_size=251, template_size=51, **kwargs):
     """
     Uses a pattern-matcher on subsets of two images determined from the passed-in keypoints and optional sizes to
@@ -306,7 +303,7 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
             A plio geodata object from which the search is extracted
     size : int, tuple
            One half of the total size of the template, so a 251 default results in a 502 pixel search space.
-           If an int, the template is square. If a tuple, in the form (x,y), is passed an 
+           If an int, the template is square. If a tuple, in the form (x,y), is passed an
            irregularly shaped template can be used.
     reduction : int
                 With each recursive call to this func, the size is reduced by this amount
