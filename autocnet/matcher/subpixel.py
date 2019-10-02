@@ -304,8 +304,10 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
             A plio geodata object from which the template is extracted
     d_img : object
             A plio geodata object from which the search is extracted
-    size : int
-           One half of the total size of the template, so a 251 default results in a 502 pixel search space
+    size : int, tuple
+           One half of the total size of the template, so a 251 default results in a 502 pixel search space.
+           If an int, the template is square. If a tuple, in the form (x,y), is passed an 
+           irregularly shaped template can be used.
     reduction : int
                 With each recursive call to this func, the size is reduced by this amount
     convergence_threshold : float
@@ -329,26 +331,29 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
     # get initial destination location
     dsample = dx
     dline = dy
+    if isinstance(size, int):
+        size = (size, size)
     while True:
         s_template, _, _ = clip_roi(s_img, sx, sy,
-                                   size_x=size, size_y=size)
+                                   size_x=size[0], size_y=size[1])
         d_search, dxr, dyr = clip_roi(d_img, dx, dy,
-                                 size_x=size, size_y=size)
+                                 size_x=size[0], size_y=size[1])
 
         if (s_template is None) or (d_search is None):
             return None, None, None
         if s_template.shape != d_search.shape:
             s_size = s_template.shape
             d_size = d_search.shape
-            updated_size = int(min(s_size + d_size) / 2)
+            updated_size_x = int(min(s_size[1] + d_size[1]))  # Why is this /2?
+            updated_size_y = int(min(s_size[0] + d_size[0]))
             # Since the image is smaller than the requested size, set the size to
             # the current maximum image size and reduce from there on potential
             # future iterations.
-            size = updated_size
+            size = (updated_size_x, updated_size_y)
             s_template, _, _ = clip_roi(s_template, sx, sy,
-                                 size_x=updated_size, size_y=updated_size)
+                                 size_x=size[0], size_y=size[1])
             d_search, dxr, dyr = clip_roi(d_search, dx, dy,
-                                size_x=updated_size, size_y=updated_size)
+                                size_x=size[0], size_y=size[1])
             if (s_template is None) or (d_search is None):
                 return None, None, None
 
@@ -362,9 +367,10 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
         dy += (shift_y + dyr)
 
         # Break if the solution has converged
-        size -= reduction
+        size = (size[0] - reduction, size[1] - reduction)
+
         dist = np.linalg.norm([dsample-dx, dline-dy])
-        if size <1:
+        if min(size) < 1:
             return None, None, None
         if abs(shift_x) <= convergence_threshold and\
            abs(shift_y) <= convergence_threshold and\
@@ -450,6 +456,12 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
             measure.sample = new_template_x
             measure.line = new_template_y
             measure.weight = cost
+
+        # In case this is a second run, set the ignore to False if this
+        # measures passed. Also, set the source measure back to ignore=False
+        measure.ignore = False
+        source.ignore = False
+
     session.commit()
     session.close()
 
@@ -494,6 +506,7 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
                                      subpixel_template_kwargs={'image_size':(251,251)},
                                      cost_func=lambda x,y: 1/x**2 * y,
                                      threshold=0.005,
+                                     filters = {},
                                      walltime='00:10:00',
                                      chunksize=1000,
                                      exclude=None):
@@ -521,7 +534,9 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
     threshold : numeric
                 measures with a cost <= the threshold are marked as ignore=True in
                 the database.
-
+    filters : dict
+              with keys equal to attributes of the Points mapping and values
+              equal to some criteria.
     exclude : str
               string containing the name(s) of any slurm nodes to exclude when
               completing a cluster job. (e.g.: 'gpu1' or 'gpu1,neb12')
@@ -534,9 +549,12 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
     # Push the job messages onto the queue
     queuename = config['redis']['processing_queue']
 
-
     session = Session()
-    for i, point in enumerate(session.query(Points)):
+    query = session.query(Points)
+    for attr, value in filters.items():
+        query = query.filter(getattr(Points, attr)==value)
+    res = query.all()
+    for i, point in enumerate(res):
         msg = {'id' : point.id,
                'iterative_phase_kwargs' : iterative_phase_kwargs,
                'subpixel_template_kwargs' : subpixel_template_kwargs,
