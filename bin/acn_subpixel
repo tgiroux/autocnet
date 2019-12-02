@@ -38,7 +38,8 @@ def main(msg, config):
     subpixel_register_point(pointid,
                             iterative_phase_kwargs=msg['iterative_phase_kwargs'],
                             subpixel_template_kwargs=msg['subpixel_template_kwargs'],
-                            threshold=msg['threshold'])
+                            threshold=msg['threshold'],
+                            **msg['cost_kwargs'])
     print('Subpixel registration complete.')
 
 if __name__ == '__main__':

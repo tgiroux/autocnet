@@ -341,8 +341,8 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
         if s_template.shape != d_search.shape:
             s_size = s_template.shape
             d_size = d_search.shape
-            updated_size_x = int(min(s_size[1] + d_size[1]))  # Why is this /2?
-            updated_size_y = int(min(s_size[0] + d_size[0]))
+            updated_size_x = int(min(s_size[1], d_size[1]))  # Why is this /2?
+            updated_size_y = int(min(s_size[0], d_size[0]))
             # Since the image is smaller than the requested size, set the size to
             # the current maximum image size and reduce from there on potential
             # future iterations.
@@ -463,7 +463,7 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
 
 def subpixel_register_points(iterative_phase_kwargs={'size': 251},
                              subpixel_template_kwargs={'image_size':(251,251)},
-                             cost_func=lambda x,y: 1/x**2 * y,
+                             cost_kwargs={},
                              threshold=0.005):
     """
     Serial subpixel registration of all of the points in a given DB table.
@@ -496,13 +496,13 @@ def subpixel_register_points(iterative_phase_kwargs={'size': 251},
         subpixel_register_point(pointid,
                                 iterative_phase_kwargs=iterative_phase_kwargs,
                                 subpixel_template_kwargs=subpixel_template_kwargs,
-                                cost_func=cost_func)
+                                **cost_kwargs)
 
 def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
                                      subpixel_template_kwargs={'image_size':(251,251)},
-                                     cost_func=lambda x,y: 1/x**2 * y,
+                                     cost_kwargs={},
                                      threshold=0.005,
-                                     filters = {},
+                                     filters={},
                                      walltime='00:10:00',
                                      chunksize=1000,
                                      exclude=None):
@@ -555,6 +555,7 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
                'iterative_phase_kwargs' : iterative_phase_kwargs,
                'subpixel_template_kwargs' : subpixel_template_kwargs,
                'threshold':threshold,
+               'cost_kwargs': cost_kwargs,
                'walltime' : walltime}
         rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
     session.close()
