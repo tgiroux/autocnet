@@ -11,9 +11,9 @@ from autocnet import config, dem, Session
 from autocnet.cg import cg as compgeom
 from autocnet.io.db.model import Images, Measures, Overlay, Points, JsonEncoder
 from autocnet.spatial import isis
-
+from autocnet.transformation.spatial import reproject
 from plurmy import Slurm
-import csmapi
+
 
 
 # SQL query to decompose pairwise overlaps
@@ -154,8 +154,8 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
     points = []
     semi_major = config['spatial']['semimajor_rad']
     semi_minor = config['spatial']['semiminor_rad']
-    ecef = pyproj.Proj(proj='geocent', a=semi_major, b=semi_minor)
-    lla = pyproj.Proj(proj='latlon', a=semi_major, b=semi_minor)
+    # ecef = pyproj.Proj(proj='geocent', a=semi_major, b=semi_minor, lon_wrap=180)
+    # lla = pyproj.Proj(proj='latlon', a=semi_major, b=semi_minor, lon_wrap=180)
     valid = compgeom.distribute_points_in_geom(geom, **distribute_points_kwargs)
     if not valid:
         warnings.warn('Failed to distribute points in overlap')
@@ -173,7 +173,10 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
             height = dem.read_array(1, [px, py, 1, 1])[0][0]
 
         # Get the BCEF coordinate from the lon, lat
-        x, y, z = pyproj.transform(lla, ecef, lon, lat, height)
+        # x, y, z = pyproj.transform(lla, ecef, lon, lat, height)
+        x, y, z = reproject([lon, lat, height], semi_major, semi_minor,
+                            'latlon', 'geocent')
+
         geom = shapely.geometry.Point(x, y, z)
         point = Points(apriori=geom,
                        adjusted=geom,

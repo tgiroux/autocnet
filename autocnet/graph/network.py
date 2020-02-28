@@ -20,7 +20,7 @@ import shapely.wkb as swkb
 import shapely.ops
 
 
-import pyproj
+# import pyproj
 
 from plio.io.io_controlnetwork import to_isis, from_isis
 from plio.io import io_hdf, io_json
@@ -44,6 +44,7 @@ from autocnet.vis.graph_view import plot_graph, cluster_plot
 from autocnet.control import control
 from autocnet.spatial.overlap import compute_overlaps_sql
 from autocnet.spatial.isis import point_info
+from autocnet.transformation.spatial import reproject
 
 #np.warnings.filterwarnings('ignore')
 
@@ -1822,8 +1823,8 @@ WHERE
 
     def place_points_from_cnet(self, cnet):
         semi_major, semi_minor = config["spatial"]["semimajor_rad"], config["spatial"]["semiminor_rad"]
-        ecef = pyproj.Proj(proj='geocent', a=semi_major, b=semi_minor)
-        lla = pyproj.Proj(proj='latlon', a=semi_major, b=semi_minor)
+        # ecef = pyproj.Proj(proj='geocent', a=semi_major, b=semi_minor)
+        # lla = pyproj.Proj(proj='latlon', a=semi_major, b=semi_minor)
 
         if isinstance(cnet, str):
             cnet = from_isis(cnet)
@@ -1854,7 +1855,9 @@ WHERE
 
             row = cnetpoint.iloc[0]
             x,y,z= row.adjustedX, row.adjustedY, row.adjustedZ
-            lon, lat, alt = pyproj.transform(ecef, lla, x, y, z)
+            # lon, lat, alt = pyproj.transform(ecef, lla, x, y, z)
+            lon, lat, alt = reproject([x, y, z], semi_major, semi_minor, 'geocent', 'latlon')
+
 
             point = Points(identifier=id,
                            ignore=row.pointIgnore,
