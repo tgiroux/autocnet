@@ -13,7 +13,7 @@ from autocnet.io.db.model import Images, Measures, Overlay, Points, JsonEncoder
 from autocnet.spatial import isis
 from autocnet.transformation.spatial import reproject
 from plurmy import Slurm
-
+import csmapi
 
 
 # SQL query to decompose pairwise overlaps
