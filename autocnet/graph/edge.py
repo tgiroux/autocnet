@@ -975,13 +975,6 @@ class NetworkEdge(Edge):
         session.close()
 
     def get_overlapping_indices(self, kps):
-        # ecef = pyproj.Proj(proj='geocent',
-	# 		               a=self.parent.config['spatial']['semimajor_rad'],
-	# 		               b=self.parent.config['spatial']['semiminor_rad'])
-        # lla = pyproj.Proj(proj='longlat',
-	#		              a=self.parent.config['spatial']['semiminor_rad'],
-	#		              b=self.parent.config['spatial']['semimajor_rad'])
-        # lons, lats, alts = pyproj.transform(ecef, lla, kps.xm.values, kps.ym.values, kps.zm.values)
         lons, lats, alts = reproject([kps.xm.values, kps.ym.values, kps.zm.values], semi_major, semi_minor, 'geocent', 'latlon')
         points = [Point(lons[i], lats[i]) for i in range(len(lons))]
         mask = [i for i in range(len(points)) if self.intersection.contains(points[i])]

@@ -154,8 +154,6 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
     points = []
     semi_major = config['spatial']['semimajor_rad']
     semi_minor = config['spatial']['semiminor_rad']
-    # ecef = pyproj.Proj(proj='geocent', a=semi_major, b=semi_minor, lon_wrap=180)
-    # lla = pyproj.Proj(proj='latlon', a=semi_major, b=semi_minor, lon_wrap=180)
     valid = compgeom.distribute_points_in_geom(geom, **distribute_points_kwargs)
     if not valid:
         warnings.warn('Failed to distribute points in overlap')
