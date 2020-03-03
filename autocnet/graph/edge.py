@@ -5,7 +5,6 @@ from collections import defaultdict, MutableMapping, Counter
 import numpy as np
 import pandas as pd
 import networkx as nx
-# import pyproj
 from scipy.spatial.distance import cdist
 from shapely.geometry import Point
 import sqlalchemy

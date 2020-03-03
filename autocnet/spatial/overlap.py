@@ -171,7 +171,6 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
             height = dem.read_array(1, [px, py, 1, 1])[0][0]
 
         # Get the BCEF coordinate from the lon, lat
-        # x, y, z = pyproj.transform(lla, ecef, lon, lat, height)
         x, y, z = reproject([lon, lat, height], semi_major, semi_minor,
                             'latlon', 'geocent')
 
