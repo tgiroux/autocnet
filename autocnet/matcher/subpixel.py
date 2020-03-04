@@ -7,7 +7,7 @@ from redis import StrictRedis
 from plurmy import Slurm
 
 from autocnet import Session, config
-from autocnet.matcher import naive_template
+from autocnet.matcher.naive_template import pattern_match
 from autocnet.matcher import ciratefi
 from autocnet.io.db.model import Measures, Points, Images, JsonEncoder
 from autocnet.graph.node import NetworkNode
@@ -165,7 +165,7 @@ def subpixel_phase(template, search, **kwargs):
     (y_shift, x_shift), error, diffphase = register_translation(search, template, **kwargs)
     return x_shift, y_shift, (error, diffphase)
 
-def subpixel_template(sx, sy, dx, dy, s_img, d_img, image_size=(251, 251), template_size=(51,51), **kwargs):
+def subpixel_template(sx, sy, dx, dy, s_img, d_img, image_size=(251, 251), template_size=(51,51),  **kwargs):
     """
     Uses a pattern-matcher on subsets of two images determined from the passed-in keypoints and optional sizes to
     compute an x and y offset from the search keypoint to the template keypoint and an associated strength.
@@ -212,6 +212,7 @@ def subpixel_template(sx, sy, dx, dy, s_img, d_img, image_size=(251, 251), templ
     See Also
     --------
     autocnet.matcher.naive_template.pattern_match : for the kwargs that can be passed to the matcher
+    autocnet.matcher.naive_template.pattern_match_autoreg : for the jwargs that can be passed to the autoreg style matcher
     """
 
     image_size = check_image_size(image_size)
@@ -223,7 +224,7 @@ def subpixel_template(sx, sy, dx, dy, s_img, d_img, image_size=(251, 251), templ
     if (s_image is None) or (d_template is None):
         return None, None, None
 
-    shift_x, shift_y, metrics = naive_template.pattern_match(d_template, s_image, **kwargs)
+    shift_x, shift_y, metrics = pattern_match(d_template, s_image, **kwargs)
 
     dx = (dx - shift_x + dxr)
     dy = (dy - shift_y + dyr)
@@ -362,7 +363,6 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
         # Apply the shift to d_search and compute the new correspondence location
         dx += shift_x  # The implementation already applies the dxr, dyr shifts
         dy += shift_y 
-
         # Break if the solution has converged
         size = (size[0] - reduction, size[1] - reduction)
 
@@ -374,6 +374,69 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=251, reduction=11, conver
            abs(dist) <= max_dist:
             break
     return dx, dy, metrics
+
+def subpixel_register_measure(measureid, iterative_phase_kwargs={}, subpixel_template_kwargs={},
+                            cost_func=lambda x,y: 1/x**2 * y, threshold=0.005):
+
+    session = Session()
+    
+    # Setup the measure that is going to be matched
+    destination = session.query(Measures).filter(Measures.id == measureid).one()
+    destinationid = destination.imageid
+    res = session.query(Images).filter(Images.id == destinationid).one()
+    destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
+
+    # Get the point id and set up the reference measure
+    pointid = destination.pointid
+    source = session.query(Measures).filter(Measures.pointid==pointid).order_by(Measures.id).first()
+    sourceid = source.imageid
+    res = session.query(Images).filter(Images.id == sourceid).one()
+    source_node = NetworkNode(node_id=sourceid, image_path=res.path)
+
+    new_template_x, new_template_y, template_metric = subpixel_template(source.sample,
+                                                            source.line,
+                                                            destination.sample,
+                                                            destination.line,
+                                                            source_node.geodata,
+                                                            destination_node.geodata,
+                                                            **subpixel_template_kwargs)
+    if new_template_x == None:
+        destination.ignore = True # Unable to template match
+        return
+
+    new_phase_x, new_phase_y, phase_metrics = iterative_phase(source.sample,
+                                                                source.line,
+                                                                new_template_x,
+                                                                new_template_y,
+                                                                source_node.geodata,
+                                                                destination_node.geodata,
+                                                                **iterative_phase_kwargs)
+    if new_phase_x == None:
+        destination.ignore = True # Unable to phase match
+        return
+
+    dist = np.linalg.norm([new_phase_x-new_template_x, new_phase_y-new_template_y])
+    cost = cost_func(dist, template_metric)
+
+    if cost <= threshold:
+        destination.ignore = True # Threshold criteria not met
+        return
+
+    # Update the measure
+    if new_template_x:
+        destination.sample = new_template_x
+        destination.line = new_template_y
+        destination.weight = cost
+
+    # In case this is a second run, set the ignore to False if this
+    # measures passed. Also, set the source measure back to ignore=False
+    destination.ignore = False
+    source.ignore = False
+
+    session.commit()
+    session.close()
+
+
 
 def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_template_kwargs={},
                             cost_func=lambda x,y: 1/x**2 * y, threshold=0.005):
@@ -565,6 +628,49 @@ def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
     # Submit the jobs
     submitter = Slurm('acn_subpixel',
                  job_name='subpixel_register_points',
+                 mem_per_cpu=config['cluster']['processing_memory'],
+                 time=walltime,
+                 partition=config['cluster']['queue'],
+                 output=config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
+    submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize, exclude=exclude)
+    return job_counter
+
+def cluster_subpixel_register_measures(iterative_phase_kwargs={'size': 251},
+                                     subpixel_template_kwargs={'image_size':(251,251)},
+                                     cost_kwargs={},
+                                     threshold=0.005,
+                                     filters={},
+                                     walltime='00:10:00',
+                                     chunksize=1000,
+                                     exclude=None):
+    # Setup the redis queue
+    rqueue = StrictRedis(host=config['redis']['host'],
+                        port=config['redis']['port'],
+                        db=0)
+
+    # Push the job messages onto the queue
+    queuename = config['redis']['processing_queue']
+
+    session = Session()
+    query = session.query(Measures)
+    for attr, value in filters.items():
+        query = query.filter(getattr(Measures, attr)==value)
+    res = query.all()
+    for i, measure in enumerate(res):
+        msg = {'id' : measure.id,
+               'iterative_phase_kwargs' : iterative_phase_kwargs,
+               'subpixel_template_kwargs' : subpixel_template_kwargs,
+               'threshold':threshold,
+               'cost_kwargs': cost_kwargs,
+               'walltime' : walltime}
+        rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
+    session.close()
+
+    job_counter = i + 1
+
+    # Submit the jobs
+    submitter = Slurm('acn_subpixel_measure',
+                 job_name='subpixel_register_measure',
                  mem_per_cpu=config['cluster']['processing_memory'],
                  time=walltime,
                  partition=config['cluster']['queue'],
