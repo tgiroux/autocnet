@@ -68,7 +68,6 @@ class Node(dict, MutableMapping):
         self['node_id'] = node_id
         self['hash'] = image_name
         self.masks = pd.DataFrame()
-        self.ignore = False
 
     @property
     def camera(self):
@@ -99,6 +98,16 @@ class Node(dict, MutableMapping):
     @keypoints.setter
     def keypoints(self, kps):
         self._keypoints = kps
+
+    @property
+    def ignore(self):
+        if not hasattr(self, '_ignore'):
+            self._ignore = False
+        return self._ignore
+
+    @ignore.setter
+    def ignore(self, ignore):
+        self._ignore = ignore
 
     def __repr__(self):
         return """
