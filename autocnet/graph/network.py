@@ -1406,6 +1406,8 @@ class NetworkCandidateGraph(CandidateGraph):
             raise TypeError('Function argument must be a string or bytes object.')
 
         for job_counter, elem in enumerate(onobj.data('data')):
+            if getattr(elem[-1], 'ignore', False):
+                continue
             # Determine if we are working with an edge or a node
             if len(elem) > 2:
                 id = (elem[2].source['node_id'],
