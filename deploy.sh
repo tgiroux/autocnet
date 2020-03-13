@@ -1,4 +1,4 @@
-travis-sphinx deploy
+travis-sphinx -v deploy
 # source deactivate
 # conda install conda-build anaconda-client
 # conda config --set anaconda_upload yes
