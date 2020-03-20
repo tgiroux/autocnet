@@ -183,13 +183,16 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
 
         # Need to get the first node and then convert from lat/lon to image space
         node = nodes[0]
+        x, y, z = reproject([lon, lat, height],
+                             semi_major, semi_minor,
+                             'latlon', 'geocent')
         if cam_type == "isis":
-            line, sample = isis.ground_to_image(node["image_path"], lon ,lat)
+            # Convert to geocentric lon, lat
+            geocent_lon, geocent_lat, _ = reproject([x, y, z],
+                                                    semi_major, semi_major, 'geocent', 'latlon')
+            line, sample = isis.ground_to_image(node["image_path"], geocent_lon ,geocent_lat)
         if cam_type == "csm":
             # The CSM conversion makes the LLA/ECEF conversion explicit
-            x, y, z = reproject([lon, lat, height],
-                                 semi_major, semi_minor,
-                                 'latlon', 'geocent')
             gnd = csmapi.EcefCoord(x, y, z)
             image_coord = node.camera.groundToImage(gnd)
             sample, line = image_coord.samp, image_coord.line
@@ -239,7 +242,7 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
 
             # Get the BCEF coordinate from the lon, lat
             x, y, z = reproject([updated_lon, updated_lat, updated_height],
-                                semi_major, semi_minor, 'latlon', 'geocent')
+                                semi_major, semi_major, 'latlon', 'geocent')
 
         # If the updated point is outside of the overlap, then revert back to the
         # original point and hope the matcher can handle it when sub-pixel registering
@@ -247,7 +250,9 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
                                                              'geocent', 'latlon')
         if not geom.contains(shapely.geometry.Point(updated_lon, updated_lat)):
             x, y, z = reproject([lon, lat, height],
-                                semi_major, semi_minor, 'latlon', 'geocent')
+                                semi_major, semi_major, 'latlon', 'geocent')
+            updated_lon, updated_lat, updated_height = reproject([x, y, z], semi_major, semi_minor,
+                                                                 'geocent', 'latlon')
 
         point_geom = shapely.geometry.Point(x, y, z)
         point = Points(apriori=point_geom,
@@ -255,13 +260,16 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
                        pointtype=2, # Would be 3 or 4 for ground
                        cam_type=cam_type)
 
+        # Compute ground point to back project into measurtes
         gnd = csmapi.EcefCoord(x, y, z)
+        geocent_lon, geocent_lat, _ = reproject([x, y, z],
+                                                semi_major, semi_major, 'geocent', 'latlon')
         for node in nodes:
             if cam_type == "csm":
                 image_coord = node.camera.groundToImage(gnd)
                 sample, line = image_coord.samp, image_coord.line
             if cam_type == "isis":
-                line, sample = isis.ground_to_image(node["image_path"], updated_lon, updated_lat)
+                line, sample = isis.ground_to_image(node["image_path"], geocent_lon, geocent_lat)
 
             point.measures.append(Measures(sample=sample,
                                            line=line,
