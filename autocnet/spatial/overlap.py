@@ -7,6 +7,7 @@ import pyproj
 import shapely
 import sqlalchemy
 from plio.io.io_gdal import GeoDataset
+from pysis.exceptions import ProcessError
 
 from autocnet import config, dem, Session
 from autocnet.cg import cg as compgeom
@@ -18,7 +19,6 @@ from autocnet.transformation import roi
 
 from plurmy import Slurm
 import csmapi
-
 
 # SQL query to decompose pairwise overlaps
 compute_overlaps_sql = """
@@ -64,8 +64,9 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
         if overlaps == None:
             continue
 
+        oid = o.id
         overlapnodes = [nodes[id]["data"] for id in overlaps]
-        points.extend(place_points_in_overlap(overlapnodes, o.geom, cam_type=cam_type,
+        points.extend(place_points_in_overlap(oid, overlapnodes, o.geom, cam_type=cam_type,
                                               distribute_points_kwargs=distribute_points_kwargs))
     Points.bulkadd(points)
 
@@ -127,7 +128,7 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
     submitter.submit(array='1-{}%24'.format(job_counter), chunksize=chunksize, exclude=exclude)
     return job_counter
 
-def place_points_in_overlap(nodes, geom, cam_type="csm",
+def place_points_in_overlap(oid, nodes, geom, cam_type="csm",
                             size=71,
                             distribute_points_kwargs={}):
     """
@@ -190,7 +191,12 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
             # Convert to geocentric lon, lat
             geocent_lon, geocent_lat, _ = reproject([x, y, z],
                                                     semi_major, semi_major, 'geocent', 'latlon')
-            line, sample = isis.ground_to_image(node["image_path"], geocent_lon ,geocent_lat)
+            try:
+                line, sample = isis.ground_to_image(node["image_path"], geocent_lon ,geocent_lat)
+            except ProcessError as e:
+                if 'Requested position does not project in camera model' in e.stderr:
+                    print(f'point ({geocent_lon}, {geocent_lat}) does not project to reference image {node["image_path"]}')
+                    continue
         if cam_type == "csm":
             # The CSM conversion makes the LLA/ECEF conversion explicit
             gnd = csmapi.EcefCoord(x, y, z)
@@ -203,7 +209,6 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
         try:
             interesting = extract_most_interesting(image)
         except:
-            warnings.warn('Could not find an interesting feature around point')
             continue
 
         # kps are in the image space with upper left origin and the roi
@@ -215,11 +220,17 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
 
         # Get the updated lat/lon from the feature in the node
         if cam_type == "isis":
-            p = isis.point_info(node["image_path"], newsample, newline, point_type="image")
+            try:
+                p = isis.point_info(node["image_path"], newsample, newline, point_type="image")
+            except ProcessError as e:
+                if 'Requested position does not project in camera model' in e.stderr:
+                    print(node["image_path"])
+                    print(f'interesting point ({newsample}, {newline}) does not project back to ground')
+                    continue
             try:
                 x, y, z = p["BodyFixedCoordinate"].value
             except:
-                x,y,x = ["BodyFixedCoordinate"]
+                x, y, z = ["BodyFixedCoordinate"]
 
             if getattr(p["BodyFixedCoordinate"], "units", "None").lower() == "km":
                 x = x * 1000
@@ -255,7 +266,8 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
                                                                  'geocent', 'latlon')
 
         point_geom = shapely.geometry.Point(x, y, z)
-        point = Points(apriori=point_geom,
+        point = Points(overlapid=oid,
+                       apriori=point_geom,
                        adjusted=point_geom,
                        pointtype=2, # Would be 3 or 4 for ground
                        cam_type=cam_type)
@@ -269,7 +281,12 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
                 image_coord = node.camera.groundToImage(gnd)
                 sample, line = image_coord.samp, image_coord.line
             if cam_type == "isis":
-                line, sample = isis.ground_to_image(node["image_path"], geocent_lon, geocent_lat)
+                try:
+                    line, sample = isis.ground_to_image(node["image_path"], geocent_lon, geocent_lat)
+                except ProcessError as e:
+                    if 'Requested position does not project in camera model' in e.stderr:
+                        print(f'interesting point ({geocent_lon},{geocent_lat}) does not project to image {node["image_path"]}')
+                        continue
 
             point.measures.append(Measures(sample=sample,
                                            line=line,
