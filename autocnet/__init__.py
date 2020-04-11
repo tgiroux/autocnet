@@ -23,38 +23,6 @@ except DistributionNotFound:
 else:
     __version__ = _dist.version
 
-# Defaults
-dem = None
-
-from autocnet.config_parser import parse_config
-
-config = parse_config()
-
-if config:
-    dem = config['spatial']['dem']
-    try:
-        dem = GeoDataset(dem)
-    except:
-        warnings.warn(f'Unable to load the desired DEM: {dem}.')
-        dem = None
-
-    db_uri = '{}://{}:{}@{}:{}/{}'.format(config['database']['type'],
-                                            config['database']['username'],
-                                            config['database']['password'],
-                                            config['database']['host'],
-                                            config['database']['pgbouncer_port'],
-                                            config['database']['name'])
-    hostname = socket.gethostname()
-    engine = create_engine(db_uri, poolclass=pool.NullPool,
-                    connect_args={"application_name":"AutoCNet_{}".format(hostname)},
-                    isolation_level="AUTOCOMMIT")
-    Session = orm.session.sessionmaker(bind=engine)
-else:
-    def sessionwarn():
-        raise RuntimeError('Attempting to use a database session without a config file specified.')
-    Session = sessionwarn
-    engine = sessionwarn
-
 # Patch the candidate graph into the root namespace
 from autocnet.graph.network import CandidateGraph, NetworkCandidateGraph
 

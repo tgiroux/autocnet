@@ -3,8 +3,6 @@ from math import modf, floor
 import numpy as np
 
 from skimage.feature import register_translation
-from redis import StrictRedis
-from plurmy import Slurm
 
 from skimage import transform as tf
 
@@ -13,7 +11,6 @@ from matplotlib import pyplot as plt
 from plio.io.io_gdal import GeoDataset
 from pysis.exceptions import ProcessError
 
-from autocnet import Session, config
 from autocnet.matcher.naive_template import pattern_match, pattern_match_autoreg
 from autocnet.matcher import ciratefi
 from autocnet.io.db.model import Measures, Points, Images, JsonEncoder
@@ -418,7 +415,6 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(51, 51), reduction=11, c
            delta_dy<= convergence_threshold and\
            abs(dist) <= max_dist:
            break
-
     return dx, dy, metrics
 
 
@@ -548,72 +544,90 @@ def geom_match(base_cube, input_cube, bcenter_x, bcenter_y, size_x=60, size_y=60
     return sample, line, dist, maxcorr, corrmap
 
 
-def subpixel_register_measure(measureid, iterative_phase_kwargs={}, subpixel_template_kwargs={},
-                            cost_func=lambda x,y: 1/x**2 * y, threshold=0.005):
+def subpixel_register_measure(measureid, 
+                              iterative_phase_kwargs={}, 
+                              subpixel_template_kwargs={},
+                              cost_func=lambda x,y: 1/x**2 * y, 
+                              threshold=0.005,
+                              ncg=None, 
+                              **kwargs):
 
-    session = Session()
+    
+    
+    if isinstance(measureid, Measures):
+        measureid = measureid.id
 
-    # Setup the measure that is going to be matched
-    destination = session.query(Measures).filter(Measures.id == measureid).one()
-    destinationid = destination.imageid
-    res = session.query(Images).filter(Images.id == destinationid).one()
-    destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
+    result = {'measureid':measureid,
+              'status':''}
 
-    # Get the point id and set up the reference measure
-    pointid = destination.pointid
-    source = session.query(Measures).filter(Measures.pointid==pointid).order_by(Measures.id).first()
-    source.weight = 1
+    with ncg.session_scope() as session:
+        # Setup the measure that is going to be matched
+        destination = session.query(Measures).filter(Measures.id == measureid).one()
+        destinationid = destination.imageid
+        res = session.query(Images).filter(Images.id == destinationid).one()
+        destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
 
-    sourceid = source.imageid
-    res = session.query(Images).filter(Images.id == sourceid).one()
-    source_node = NetworkNode(node_id=sourceid, image_path=res.path)
+        # Get the point id and set up the reference measure
+        pointid = destination.pointid
+        source = session.query(Measures).filter(Measures.pointid==pointid).order_by(Measures.id).first()
+        source.weight = 1
 
-    new_template_x, new_template_y, template_metric, _ = subpixel_template(source.sample,
-                                                            source.line,
-                                                            destination.sample,
-                                                            destination.line,
-                                                            source_node.geodata,
-                                                            destination_node.geodata,
-                                                            **subpixel_template_kwargs)
-    if new_template_x == None:
-        destination.ignore = True # Unable to template match
-        return
+        sourceid = source.imageid
+        res = session.query(Images).filter(Images.id == sourceid).one()
+        source_node = NetworkNode(node_id=sourceid, image_path=res.path)
 
-    new_phase_x, new_phase_y, phase_metrics = iterative_phase(source.sample,
+        new_template_x, new_template_y, template_metric, _ = subpixel_template(source.sample,
                                                                 source.line,
-                                                                new_template_x,
-                                                                new_template_y,
+                                                                destination.sample,
+                                                                destination.line,
                                                                 source_node.geodata,
                                                                 destination_node.geodata,
-                                                                **iterative_phase_kwargs)
-    if new_phase_x == None:
-        destination.ignore = True # Unable to phase match
-        return
+                                                                **subpixel_template_kwargs)
+        if new_template_x == None:
+            destination.ignore = True # Unable to template match
+            result['status'] = 'Unable to template match.'
+            return result
 
-    dist = np.linalg.norm([new_phase_x-new_template_x, new_phase_y-new_template_y])
-    cost = cost_func(dist, template_metric)
+        new_phase_x, new_phase_y, phase_metrics = iterative_phase(source.sample,
+                                                                    source.line,
+                                                                    new_template_x,
+                                                                    new_template_y,
+                                                                    source_node.geodata,
+                                                                    destination_node.geodata,
+                                                                    **iterative_phase_kwargs)
+        if new_phase_x == None:
+            destination.ignore = True # Unable to phase match
+            result['status'] = 'Unable to phase match.'
+            return result
 
-    if cost <= threshold:
-        destination.ignore = True # Threshold criteria not met
-        return
+        dist = np.linalg.norm([new_phase_x-new_template_x, new_phase_y-new_template_y])
+        cost = cost_func(dist, template_metric)
 
-    # Update the measure
-    if new_phase_x:
-        destination.sample = new_phase_x
-        destination.line = new_phase_y
-        destination.weight = cost
+        if cost <= threshold:
+            destination.ignore = True # Threshold criteria not met
+            result['status'] = 'Cost metric not met.'
+            return result
 
-    # In case this is a second run, set the ignore to False if this
-    # measures passed. Also, set the source measure back to ignore=False
-    destination.ignore = False
-    source.ignore = False
+        # Update the measure
+        if new_phase_x:
+            destination.sample = new_phase_x
+            destination.line = new_phase_y
+            destination.weight = cost
 
-    session.commit()
-    session.close()
+        # In case this is a second run, set the ignore to False if this
+        # measures passed. Also, set the source measure back to ignore=False
+        destination.ignore = False
+        source.ignore = False
+        result['status'] = 'Success.'
+
+    return result
 
 
-def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_template_kwargs={},
-                            cost_func=lambda x,y: 1/x**2 * y, threshold=0.005):
+def subpixel_register_point(pointid, iterative_phase_kwargs={}, 
+                            subpixel_template_kwargs={},
+                            cost_func=lambda x,y: 1/x**2 * y, threshold=0.005,
+                            ncg=None,
+                            **kwargs):
 
     """
     Given some point, subpixel register all of the measures in the point to the
@@ -621,8 +635,12 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
 
     Parameters
     ----------
-    pointid : int
-              The identifier of the point in the DB
+    ncg : obj
+          the network candidate graph that the point is associated with; used for 
+          the DB session that is able to access the point.
+
+    pointid : int or obj
+              The identifier of the point in the DB or a Points object
 
     iterative_phase_kwargs : dict
                              Any keyword arguments passed to the phase matcher
@@ -640,59 +658,80 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
                 measures with a cost <= the threshold are marked as ignore=True in
                 the database.
     """
-    session = Session()
-    measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
-    source = measures[0]
+    Session = ncg.Session
+    if not Session:
+        raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
+    
+    if isinstance(pointid, Points):
+        pointid = pointid.id
+    
+    with ncg.session_scope() as session:
+        measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
+        source = measures[0]
 
-    sourceid = source.imageid
-    res = session.query(Images).filter(Images.id == sourceid).one()
-    source_node = NetworkNode(node_id=sourceid, image_path=res.path)
+        sourceid = source.imageid
+        res = session.query(Images).filter(Images.id == sourceid).one()
+        source_node = NetworkNode(node_id=sourceid, image_path=res.path)
+        source_node.parent = ncg
 
-    for measure in measures[1:]:
-        cost = None
-        destinationid = measure.imageid
+        print(f'Attempting to subpixel register {len(measures)} measures for point {pointid}')
 
-        res = session.query(Images).filter(Images.id == destinationid).one()
-        destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
+        resultlog = []
+        for measure in measures[1:]:
+            currentlog = {'measureid':measure.id,
+                        'status':''}
+            cost = None
+            destinationid = measure.imageid
 
-        new_x, new_y, dist, template_metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
-                                                      source.sample, source.line,
-                                                      template_kwargs=subpixel_template_kwargs,
-                                                      phase_kwargs=iterative_phase_kwargs, size_x=100, size_y=100)
+            res = session.query(Images).filter(Images.id == destinationid).one()
+            destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
+            destination_node.parent = ncg
 
-        if new_x == None or new_y == None:
-            measure.ignore = True # Unable to phase match
-            continue
+            new_x, new_y, dist, template_metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
+                                                        source.sample, source.line,
+                                                        template_kwargs=subpixel_template_kwargs,
+                                                        phase_kwargs=iterative_phase_kwargs, size_x=100, size_y=100)
 
-        cost = cost_func(dist, template_metric)
+            if new_x == None or new_y == None:
+                measure.ignore = True # Unable to phase match
+                currentlog['status'] = 'Failed to geom match.'
+                resultlog.append(currentlog)
+                continue
+            cost = cost_func(dist, template_metric)
 
-        if cost <= threshold:
-            measure.ignore = True # Threshold criteria not met
-            continue
+            if cost <= threshold:
+                measure.ignore = True # Threshold criteria not met
+                currentlog['status'] = f'Cost failed. Distance shifted: {dist}. Metric: {template_metric}.'
+                resultlog.append(currentlog)
+                continue
 
-        # Update the measure
-        if new_x:
+            # Update the measure
             measure.sample = new_x
             measure.line = new_y
             measure.weight = cost
 
-        # In case this is a second run, set the ignore to False if this
-        # measures passed. Also, set the source measure back to ignore=False
-        measure.ignore = False
-        source.ignore = False
+            # In case this is a second run, set the ignore to False if this
+            # measures passed. Also, set the source measure back to ignore=False
+            measure.ignore = False
+            source.ignore = False
+            currentlog['status'] = f'Success.'
+            resultlog.append(currentlog)
 
-    session.commit()
-    session.close()
+    return resultlog
 
 def subpixel_register_points(iterative_phase_kwargs={'size': 251},
                              subpixel_template_kwargs={'image_size':(251,251)},
                              cost_kwargs={},
-                             threshold=0.005):
+                             threshold=0.005,
+                             Session=None):
     """
     Serial subpixel registration of all of the points in a given DB table.
 
     Parameters
     ----------
+    Session : obj
+              A SQLAlchemy Session factory.
+
     pointid : int
               The identifier of the point in the DB
 
@@ -712,6 +751,8 @@ def subpixel_register_points(iterative_phase_kwargs={'size': 251},
                 measures with a cost <= the threshold are marked as ignore=True in
                 the database.
     """
+    if not Session:
+        raise BrokenPipeError('This func requires a database session.')
     session = Session()
     pointids = [point.id for point in session.query(Points)]
     session.close()
@@ -720,123 +761,4 @@ def subpixel_register_points(iterative_phase_kwargs={'size': 251},
                                 iterative_phase_kwargs=iterative_phase_kwargs,
                                 subpixel_template_kwargs=subpixel_template_kwargs,
                                 **cost_kwargs)
-
-def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
-                                     subpixel_template_kwargs={'image_size':(251,251)},
-                                     cost_kwargs={},
-                                     threshold=0.005,
-                                     filters={},
-                                     walltime='00:10:00',
-                                     chunksize=1000,
-                                     exclude=None):
-    """
-    Distributed subpixel registration of all of the points in a given DB table.
-
-
-    Parameters
-    ----------
-    pointid : int
-              The identifier of the point in the DB
-
-    iterative_phase_kwargs : dict
-                             Any keyword arguments passed to the phase matcher
-
-    subpixel_template_kwargs : dict
-                               Ay keyword arguments passed to the template matcher
-
-    cost : func
-           A generic cost function accepting two arguments (x,y), where x is the
-           distance that a point has shifted from the original, sensor identified
-           intersection, and y is the correlation coefficient coming out of the
-           template matcher.
-
-    threshold : numeric
-                measures with a cost <= the threshold are marked as ignore=True in
-                the database.
-    filters : dict
-              with keys equal to attributes of the Points mapping and values
-              equal to some criteria.
-    exclude : str
-              string containing the name(s) of any slurm nodes to exclude when
-              completing a cluster job. (e.g.: 'gpu1' or 'gpu1,neb12')
-    """
-    # Setup the redis queue
-    rqueue = StrictRedis(host=config['redis']['host'],
-                        port=config['redis']['port'],
-                        db=0)
-
-    # Push the job messages onto the queue
-    queuename = config['redis']['processing_queue']
-
-    session = Session()
-    query = session.query(Points)
-    for attr, value in filters.items():
-        query = query.filter(getattr(Points, attr)==value)
-    res = query.all()
-    for i, point in enumerate(res):
-        msg = {'id' : point.id,
-               'iterative_phase_kwargs' : iterative_phase_kwargs,
-               'subpixel_template_kwargs' : subpixel_template_kwargs,
-               'threshold':threshold,
-               'cost_kwargs': cost_kwargs,
-               'walltime' : walltime}
-        rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
-    session.close()
-
-    job_counter = i + 1
-
-    # Submit the jobs
-    submitter = Slurm('acn_subpixel',
-                 job_name='subpixel_register_points',
-                 mem_per_cpu=config['cluster']['processing_memory'],
-                 time=walltime,
-                 partition=config['cluster']['queue'],
-                 output=config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
-    submitter.submit(array='1-{}%24'.format(job_counter), chunksize=chunksize, exclude=exclude)
-    return job_counter
-
-def cluster_subpixel_register_measures(iterative_phase_kwargs={'size': 251},
-                                     subpixel_template_kwargs={'image_size':(251,251)},
-                                     cost_kwargs={},
-                                     threshold=0.005,
-                                     filters={},
-                                     walltime='00:10:00',
-                                     chunksize=1000,
-                                     exclude=None):
-    # Setup the redis queue
-    rqueue = StrictRedis(host=config['redis']['host'],
-                        port=config['redis']['port'],
-                        db=0)
-
-    # Push the job messages onto the queue
-    queuename = config['redis']['processing_queue']
-
-    session = Session()
-    query = session.query(Measures)
-    for attr, value in filters.items():
-        query = query.filter(getattr(Measures, attr)==value)
-    res = query.all()
-    for i, measure in enumerate(res):
-        msg = {'id' : measure.id,
-               'iterative_phase_kwargs' : iterative_phase_kwargs,
-               'subpixel_template_kwargs' : subpixel_template_kwargs,
-               'threshold':threshold,
-               'cost_kwargs': cost_kwargs,
-               'walltime' : walltime}
-        rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
-    session.close()
-
-    job_counter = i + 1
-
-    # Submit the jobs
-    submitter = Slurm('acn_subpixel_measure',
-                 job_name='subpixel_register_measure',
-                 mem_per_cpu=config['cluster']['processing_memory'],
-                 time=walltime,
-                 partition=config['cluster']['queue'],
-                 output=config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
-    submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize, exclude=exclude)
-    return job_counter
-
-
 

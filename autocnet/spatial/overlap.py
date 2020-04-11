@@ -9,8 +9,8 @@ import sqlalchemy
 from plio.io.io_gdal import GeoDataset
 from pysis.exceptions import ProcessError
 
-from autocnet import config, dem, Session
 from autocnet.cg import cg as compgeom
+from autocnet.graph.node import NetworkNode
 from autocnet.io.db.model import Images, Measures, Overlay, Points, JsonEncoder
 from autocnet.spatial import isis
 from autocnet.matcher.cpu_extractor import extract_most_interesting
@@ -41,8 +41,10 @@ INSERT INTO overlay(intersections, geom) SELECT row.intersections, row.geom FROM
   FROM iid GROUP BY iid.geom) AS row WHERE array_length(intersections, 1) > 1;
 """
 
-def place_points_in_overlaps(nodes, size_threshold=0.0007,
-                             distribute_points_kwargs={}, cam_type='csm'):
+def place_points_in_overlaps(size_threshold=0.0007,
+                             distribute_points_kwargs={}, 
+                             cam_type='csm', 
+                             ncg=None):
     """
     Place points in all of the overlap geometries by back-projecing using
     sensor models.
@@ -55,82 +57,30 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
             as the value. This could be a NetworkCandidateGraph or some
             other dict-like object.
 
+    Session : obj
+              The session object from the NetworkCandidateGraph
+
     size_threshold : float
                      overlaps with area <= this threshold are ignored
     """
-    points = []
-    for o in Overlay.overlapping_larger_than(size_threshold):
-        overlaps = o.intersections
-        if overlaps == None:
+    Session = ncg.Session
+    if not Session:
+        raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
+    
+    for overlap in Overlay.overlapping_larger_than(size_threshold, Session):
+        if overlap.intersections == None:
             continue
-
-        oid = o.id
-        overlapnodes = [nodes[id]["data"] for id in overlaps]
-        points.extend(place_points_in_overlap(oid, overlapnodes, o.geom, cam_type=cam_type,
-                                              distribute_points_kwargs=distribute_points_kwargs))
-    Points.bulkadd(points)
-
-def cluster_place_points_in_overlaps(size_threshold=0.0007,
-                                     distribute_points_kwargs={},
-                                     walltime='00:10:00',
-                                     chunksize=1000,
-                                     exclude=None,
-                                     cam_type="csm",
-                                     query_string='SELECT overlay.id FROM overlay LEFT JOIN points ON ST_INTERSECTS(overlay.geom, points.geom) WHERE points.id IS NULL AND ST_AREA(overlay.geom) >= {};'):
-    """
-    Place points in all of the overlap geometries by back-projecing using
-    sensor models. This method uses the cluster to process all of the overlaps
-    in parallel. See place_points_in_overlap and acn_overlaps.
-
-    Parameters
-    ----------
-    size_threshold : float
-        overlaps with area <= this threshold are ignored
-
-    walltime : str
-        Cluster job wall time as a string HH:MM:SS
-
-    cam_type : str
-               options: {"csm", "isis"}
-               Pick what kind of camera model implementation to use
-
-    query : str
-
-    exclude : str
-              string containing the name(s) of any slurm nodes to exclude when
-              completing a cluster job. (e.g.: 'gpu1' or 'gpu1,neb12')
-    """
-    # Setup the redis queue
-    rqueue = StrictRedis(host=config['redis']['host'],
-                         port=config['redis']['port'],
-                         db=0)
-
-    # Push the job messages onto the queue
-    queuename = config['redis']['processing_queue']
-    past = 0
-    session = Session()
-    ids = [i[0] for i in session.execute(query_string.format(size_threshold))]
-    session.close()
-    for i, id in enumerate(ids):
-        msg = {'id' : id,
-               'distribute_points_kwargs' : distribute_points_kwargs,
-               'walltime' : walltime,
-               'cam_type': cam_type}
-        rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
-    # Submit the jobs
-    submitter = Slurm('acn_overlaps',
-                 job_name='place_points',
-                 mem_per_cpu=config['cluster']['processing_memory'],
-                 time=walltime,
-                 partition=config['cluster']['queue'],
-                 output=config['cluster']['cluster_log_dir']+'/autocnet.place_points-%j')
-    job_counter = i+1
-    submitter.submit(array='1-{}%24'.format(job_counter), chunksize=chunksize, exclude=exclude)
-    return job_counter
-
-def place_points_in_overlap(oid, nodes, geom, cam_type="csm",
+        place_points_in_overlap(overlap, 
+                                cam_type=cam_type,
+                                distribute_points_kwargs=distribute_points_kwargs,
+                                ncg=ncg)
+    
+def place_points_in_overlap(overlap,  
+                            cam_type="csm",
                             size=71,
-                            distribute_points_kwargs={}):
+                            distribute_points_kwargs={},
+                            ncg=None, 
+                            **kwargs):
     """
     Place points into an overlap geometry by back-projecing using sensor models.
     The DEM specified in the config file will be used to calculate point elevations.
@@ -156,31 +106,45 @@ def place_points_in_overlap(oid, nodes, geom, cam_type="csm",
     points : list of Points
         The list of points seeded in the overlap
     """
+    Session = ncg.Session
+    if not Session:
+        raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
+
+    # Determine what sensor type to use
     avail_cams = {"isis", "csm"}
     cam_type = cam_type.lower()
     if cam_type not in cam_type:
         raise Exception(f'{cam_type} is not one of valid camera: {avail_cams}')
 
     points = []
-    semi_major = config['spatial']['semimajor_rad']
-    semi_minor = config['spatial']['semiminor_rad']
+    semi_major = ncg.config['spatial']['semimajor_rad']
+    semi_minor = ncg.config['spatial']['semiminor_rad']
 
-    valid = compgeom.distribute_points_in_geom(geom, **distribute_points_kwargs)
+    # Determine the point distribution in the overlap geom
+    geom = overlap.geom
+    valid = compgeom.distribute_points_in_geom(geom, **distribute_points_kwargs, **kwargs)
     if not valid:
         warnings.warn('Failed to distribute points in overlap')
         return []
 
+    # Setup the node objects that are covered by the geom
+    nodes = []
+    with ncg.session_scope() as session:
+        for id in overlap.intersections:
+            res = session.query(Images).filter(Images.id == id).one()
+            nn = NetworkNode(node_id=id, image_path=res.path)
+            nn.parent = ncg
+            nodes.append(nn)
+    
+    print(f'Have {len(valid)} potential points to place.')
     for v in valid:
         lon = v[0]
         lat = v[1]
 
         # Calculate the height, the distance (in meters) above or
         # below the aeroid (meters above or below the BCBF spheroid).
-        if dem is None:
-            height = 0
-        else:
-            px, py = dem.latlon_to_pixel(lat, lon)
-            height = dem.read_array(1, [px, py, 1, 1])[0][0]
+        px, py = ncg.dem.latlon_to_pixel(lat, lon)
+        height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
 
         # Need to get the first node and then convert from lat/lon to image space
         node = nodes[0]
@@ -243,12 +207,8 @@ def place_points_in_overlap(oid, nodes, geom, cam_type="csm",
             updated_lon, updated_lat, _ = reproject([pcoord.x, pcoord.y, pcoord.z],
                                                     semi_major, semi_minor, 'geocent', 'latlon')
 
-            # Get the new DEM height
-            if dem is None:
-                updated_height = 0
-            else:
-                px, py = dem.latlon_to_pixel(updated_lat, updated_lon)
-                updated_height = dem.read_array(1, [px, py, 1, 1])[0][0]
+            px, py = ncg.dem.latlon_to_pixel(updated_lat, updated_lon)
+            updated_height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
 
 
             # Get the BCEF coordinate from the lon, lat
@@ -298,4 +258,6 @@ def place_points_in_overlap(oid, nodes, geom, cam_type="csm",
 
         if len(point.measures) >= 2:
             points.append(point)
-    return points
+    print(f'Able to place {len(points)} points.')
+    Points.bulkadd(points, ncg.Session)
+    

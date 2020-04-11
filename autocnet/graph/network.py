@@ -1,4 +1,5 @@
 from collections import defaultdict, OrderedDict
+from contextlib import contextmanager
 import itertools
 import json
 import math
@@ -13,6 +14,7 @@ import pandas as pd
 import numpy as np
 from redis import StrictRedis
 
+from sqlalchemy.ext.declarative.api import DeclarativeMeta
 import shapely.affinity
 import shapely.geometry
 import shapely.wkt as swkt
@@ -28,15 +30,19 @@ from plio.io import io_controlnetwork as cnet
 
 from plurmy import Slurm
 
-from autocnet import Session, engine, config
+import autocnet
+from autocnet.config_parser import parse_config
 from autocnet.cg import cg
 from autocnet.graph import markov_cluster
 from autocnet.graph.edge import Edge, NetworkEdge
 from autocnet.graph.node import Node, NetworkNode
 from autocnet.io import network as io_network
 from autocnet.io.db.model import (Images, Keypoints, Matches, Cameras, Points,
-                                  Base, Overlay, Edges, Costs, Measures, JsonEncoder)
+                                  Base, Overlay, Edges, Costs, Measures, JsonEncoder,
+                                  try_db_creation)
 from autocnet.io.db.connection import new_connection, Parent
+from autocnet.matcher import subpixel
+from autocnet.matcher import cross_instrument_matcher as cim
 from autocnet.vis.graph_view import plot_graph, cluster_plot
 from autocnet.control import control
 from autocnet.spatial.overlap import compute_overlaps_sql
@@ -1310,30 +1316,120 @@ class NetworkCandidateGraph(CandidateGraph):
 
     def __init__(self, *args, **kwargs):
         super(NetworkCandidateGraph, self).__init__(*args, **kwargs)
-        if config.get('redis', None):
-            self._setup_queues()
         # Job metadata
         self.job_status = defaultdict(dict)
 
+        # Set the parents of the nodes/edges and populate the database
+        # if unpopulated.
         for i, d in self.nodes(data='data'):
             d.parent = self
         for s, d, e in self.edges(data='data'):
             e.parent = self
 
-        # Setup the redis queues
-        redis = config.get('redis')
-        if redis:
-            self.processing_queue = redis['processing_queue']
+        self. apply_iterable_options = {
+                'edge' : self.edges,
+                'edges' : self.edges,
+                'e' : self.edges,
+                0 : self.edges,
+                'node' : self.nodes,
+                'nodes' : self.nodes,
+                'n' : self.nodes,
+                1 : self.nodes,
+                'measures' : Measures,
+                'measure' : Measures,
+                'm' : Measures,
+                2 : Measures,
+                'points' : Points,
+                'point' : Points,
+                'p' : Points,
+                3 : Points,
+                'overlaps': Overlay,
+                'overlap' : Overlay,
+                'o' :Overlay,
+                4: Overlay
+            }
+
+    def config_from_file(self, filepath):
+        """
+        A NetworkCandidateGraph uses a database. This method parses a config
+        file to set up the connection. Additionally, this loads planetary 
+        information and settings for other operations the candidate graph
+        can perform.
+
+        Parameters
+        ----------
+        filepath : str
+                   The path to the config file
+        """
+        # The YAML library will raise any parse errors
+        self.config_from_dict(parse_config(filepath))
+
+    def config_from_dict(self, config_dict):
+        """
+        A NetworkCandidateGraph uses a database. This method loads a config
+        dict to set up the connection. Additionally, this loads planetary 
+        information and settings for other operations the candidate graph
+        can perform.
+
+        Parameters
+        ----------
+        filepath : str
+                   The path to the config file
+        """
+        self.config = config_dict
+
+        # Setup REDIS
+        self._setup_queues()
+       
+        # Setup the database
+        self._setup_database()
+
+        # Setup the DEM
+        # I dislike having the DEM on the NCG, but in the short term it
+        # is the best solution I think. I don't want to pass the DEM around
+        # for the sensor calls.
+        self._setup_dem()
+
+    def _setup_dem(self):
+        spatial = self.config['spatial']
+        dem = spatial.get('dem', False)
+        if dem:
+            self.dem = GeoDataset(dem)
+        else:
+            self.dem = None
+
+    def _setup_database(self):
+        db = self.config['database']
+        self.Session, self.engine = new_connection(self.config['database'])
+
+        # Attempt to create the database (if it does not exist)
+        try_db_creation(self.engine, self.config)
 
     def _setup_queues(self):
         """
         Setup a 2 queue redis connection for pushing and pulling work/results
         """
-        conf = config['redis']
+        conf = self.config['redis']
 
         self.redis_queue = StrictRedis(host=conf['host'],
                                        port=conf['port'],
                                        db=0)
+        self.processing_queue = conf['processing_queue']
+
+    @contextmanager
+    def session_scope(self):
+     """
+     Provide a transactional scope around a series of operations.
+     """
+     session = self.Session()
+     try:
+         yield session
+         session.commit()
+     except:
+         session.rollback()
+         raise
+     finally:
+         session.close()
 
     def empty_queues(self):
         """
@@ -1356,11 +1452,71 @@ class NetworkCandidateGraph(CandidateGraph):
         sql : str
               The SQL string to be passed to the DB engine and executed.
         """
-        conn = engine.connect()
+        conn = self.engine.connect()
         conn.execute(sql)
         conn.close()
+    
+    def _push_obj_messages(self, onobj, function, walltime, args, kwargs):
+        """
+        Push messages to the redis queue for objects e.g., Nodes and Edges
+        """
+        for job_counter, elem in enumerate(onobj.data('data')):
+            if getattr(elem[-1], 'ignore', False):
+                continue
+            # Determine if we are working with an edge or a node
+            if len(elem) > 2:
+                id = (elem[2].source['node_id'],
+                    elem[2].destination['node_id'])
+                image_path = (elem[2].source['image_path'],
+                            elem[2].destination['image_path'])
+                along = 'edge'
+            else:
+                id = (elem[0])
+                image_path = elem[1]['image_path']
+                along = 'node'
 
-    def apply(self, function, on='edge', args=(), walltime='01:00:00', **kwargs):
+            msg = {'id':id,
+                   'along':along,
+                    'func':function,
+                    'args':args,
+                    'kwargs':kwargs,
+                    'walltime':walltime,
+                    'image_path':image_path,
+                    'param_step':1, 
+                    'config':self.config}
+
+            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
+        return job_counter + 1
+    
+    def _push_row_messages(self, query_obj, on, function, walltime, filters, args, kwargs):
+        """
+        Push messages to the redis queue for DB objects e.g., Points, Measures 
+        """
+        with self.session_scope() as session:
+            query = session.query(query_obj)
+        
+            # Now apply any filters that might be passed in.
+            for attr, value in filters.items():
+                query = query.filter(getattr(query_obj, attr)==value)
+            
+            # Execute the query to get the rows to be processed
+            res = query.all()
+
+            if len(res) == 0:
+                raise ValueError('Query returned zero results.')
+            for row in res:
+                msg = {'along':on,
+                        'id':row.id,
+                        'func':function,
+                        'args':args, 
+                        'kwargs':kwargs,
+                        'walltime':walltime}
+                msg['config'] = self.config  # Hacky for now, just passs the whole config dict
+                self.redis_queue.rpush(self.processing_queue,
+                                    json.dumps(msg, cls=JsonEncoder))
+        return len(res)
+
+    def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, filters={}, **kwargs):
         """
         A mirror of the apply function from the standard CandidateGraph object. This implementation
         dispatches the job to the cluster as an independent operation instead of applying an arbitrary function
@@ -1378,6 +1534,8 @@ class NetworkCandidateGraph(CandidateGraph):
         on : str
              {'edge', 'edges', 'e', 0} for an edge
              {'node', 'nodes', 'n' 1} for a node
+             {'measures', 'measure', 'm', '2'} for measures
+             {'points', 'point', 'p', '3'} for points
 
         args : tuple
                Of additional arguments to pass to the apply function
@@ -1386,59 +1544,41 @@ class NetworkCandidateGraph(CandidateGraph):
                    in the format Hour:Minute:Second, 00:00:00
         """
 
-        options = {
-            'edge' : self.edges,
-            'edges' : self.edges,
-            'e' : self.edges,
-            0 : self.edges,
-            'node' : self.nodes,
-            'nodes' : self.nodes,
-            'n' : self.nodes,
-            1 : self.nodes
-        }
-
         # Determine which obj will be called
-        onobj = options[on]
-
+        onobj = self.apply_iterable_options[on]
         res = []
-
+        
         if not isinstance(function, (str, bytes)):
             raise TypeError('Function argument must be a string or bytes object.')
-
-        for job_counter, elem in enumerate(onobj.data('data')):
-            if getattr(elem[-1], 'ignore', False):
-                continue
-            # Determine if we are working with an edge or a node
-            if len(elem) > 2:
-                id = (elem[2].source['node_id'],
-                      elem[2].destination['node_id'])
-                image_path = (elem[2].source['image_path'],
-                              elem[2].destination['image_path'])
-            else:
-                id = (elem[0])
-                image_path = elem[1]['image_path']
-
-            msg = {'id':id,
-                    'func':function,
-                    'args':args,
-                    'kwargs':kwargs,
-                    'walltime':walltime,
-                    'image_path':image_path,
-                    'param_step':1}
-
-            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
-
-        # SLURM is 1 based, while enumerate is 0 based
-        job_counter += 1
+        if isinstance(onobj, DeclarativeMeta):
+            job_counter = self._push_row_messages(onobj, on, function, walltime, filters, args, kwargs)
+        else:
+            job_counter = self._push_obj_messages(onobj, function, walltime, args, kwargs)
+     
 
         # Submit the jobs
-        submitter = Slurm('acn_submit',
-                     job_name=function,
-                     mem_per_cpu=config['cluster']['processing_memory'],
+        rconf = self.config['redis']
+        rhost = rconf['host']
+        rport = rconf['port']
+        processing_queue = rconf['processing_queue']
+        
+        env = self.config['env']
+        condaenv = env['conda']
+        isisroot = env['ISISROOT']
+        isisdata = env['ISISDATA']
+        
+        isissetup = f'export ISISROOT={isisroot} && export ISIS3DATA={isisdata}'
+        condasetup = f'conda activate {condaenv}'
+        job = f'acn_submit -r={rhost} -p={rport} {processing_queue}'
+        command = f'{condasetup} && {isissetup} && {job}'
+        
+        submitter = Slurm(command,
+                     job_name='AutoCNet',
+                     mem_per_cpu=self.config['cluster']['processing_memory'],
                      time=walltime,
-                     partition=config['cluster']['queue'],
-                     output=config['cluster']['cluster_log_dir']+f'/autocnet.{function}-%j')
-        submitter.submit(array='1-{}'.format(job_counter))
+                     partition=self.config['cluster']['queue'],
+                     output=self.config['cluster']['cluster_log_dir']+f'/autocnet.{function}-%j')
+        submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize)
         return job_counter
 
     def generic_callback(self, msg):
@@ -1461,14 +1601,6 @@ class NetworkCandidateGraph(CandidateGraph):
         # If the job was successful, no need to resubmit
         if msg['success'] == True:
             return
-
-    def generate_vrts(self, **kwargs):
-        """
-        For the nodes in the graph, genreate a GDAL compliant vrt file.
-        This is just a dispatcher to the knoten generate_vrt file.
-        """
-        for _, n in self.nodes(data='data'):
-            n.generate_vrt(**kwargs)
 
     def to_isis(self, path, flistpath=None,sql = """
 SELECT points.id,
@@ -1519,7 +1651,7 @@ WHERE
 
         """
 
-        df = pd.read_sql(sql, engine)
+        df = pd.read_sql(sql, self.engine)
 
         #create columns in the dataframe; zeros ensure plio (/protobuf) will
         #ignore unless populated with alternate values
@@ -1547,7 +1679,7 @@ WHERE
 
         if flistpath is None:
             flistpath = os.path.splitext(path)[0] + '.lis'
-        target = config['spatial'].get('target', None)
+        target = self.config['spatial'].get('target', None)
 
         ids = df['imageid'].unique()
         fpaths = [self.nodes[i]['data']['image_path'] for i in ids]
@@ -1558,8 +1690,7 @@ WHERE
         cnet.to_isis(df, path, targetname=target)
         cnet.write_filelist(fpaths, path=flistpath)
 
-    @staticmethod
-    def update_from_jigsaw(session, path):
+    def update_from_jigsaw(self, session, path):
         """
         Updates the measures table in the database with data from
         a jigsaw bundle adjust
@@ -1576,7 +1707,7 @@ WHERE
         data_to_update['id'] = data_to_update['id'].apply(lambda row : int(row))
 
         # Generate a temp table, update the real table, then drop the temp table
-        data_to_update.to_sql('temp_measures', engine, if_exists='replace', index_label='serialnumber', index = False)
+        data_to_update.to_sql('temp_measures', self.engine, if_exists='replace', index_label='serialnumber', index = False)
 
         sql = """
         UPDATE measures AS f
@@ -1646,22 +1777,20 @@ WHERE
         if not os.path.exists(newdir):
             os.makedirs(newdir)
 
-        session = Session()
-        images = session.query(Images).all()
-        oldnew = []
-        for obj in images:
-            oldpath = obj.path
-            filename = os.path.basename(oldpath)
-            obj.path = os.path.join(newdir, filename)
-            oldnew.append((oldpath, obj.path))
-        session.commit()
-        session.close()
+        with self.session_scope() as session:
+            images = session.query(Images).all()
+            oldnew = []
+            for obj in images:
+                oldpath = obj.path
+                filename = os.path.basename(oldpath)
+                obj.path = os.path.join(newdir, filename)
+                oldnew.append((oldpath, obj.path))
 
         # Copy the files
         [copyfile(old, new) for old, new in oldnew]
 
-    @classmethod
-    def from_remote_database(cls, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
+    
+    def add_from_remote_database(self, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
         """
         This is a constructor that takes an existing database containing images and sensors,
         copies the selected rows into the project specified in the autocnet_config variable,
@@ -1699,16 +1828,18 @@ WHERE
 
         Example
         -------
+        >>> ncg = NetworkCandidateGraph()
+        >>> ncg.config_from_dict(new_config)
         >>> source_db_config = {'username':'jay',
         'password':'abcde',
         'host':'autocnet.wr.usgs.gov',
         'pgbouncer_port':5432,
-        'name':'ctx'}
-        >>> geom = 'LINESTRING(145 10, 145 11, 146 11, 146 10, 145 10)'
+        'name':'mars'}
+        >>> geom = 'LINESTRING(145 10, 145 10.25, 145.25 10.25, 145.25 10, 145 10)'
         >>> srid = 949900
         >>> outpath = '/scratch/jlaura/fromdb'
-        >>> query = f"SELECT * FROM Images WHERE ST_INTERSECTS(geom, ST_Polygon(ST_GeomFromText('{geom}'), {srid})) = TRUE"
-        >>> ncg = NetworkCandidateGraph.from_remote_database(source_db_config, outpath, query_string=query)
+        >>> query = f"SELECT * FROM ctx WHERE ST_INTERSECTS(geom, ST_Polygon(ST_GeomFromText('{geom}'), {srid})) = TRUE"
+        >>> ncg.add_from_remote_database(source_db_config, outpath, query_string=query)
         """
 
         sourceSession, _ = new_connection(source_db_config)
@@ -1716,28 +1847,25 @@ WHERE
 
         sourceimages = sourcesession.execute(query_string).fetchall()
 
-        destinationsession = Session()
-        destinationsession.execute(Images.__table__.insert(), sourceimages)
+        with session_scope() as destinationsession:
+            destinationsession = self.Session()
+            destinationsession.execute(Images.__table__.insert(), sourceimages)
 
-        # Get the camera objects to manually join. Keeps the caller from
-        # having to remember to bring cameras as well.
-        ids = [i[0] for i in sourceimages]
-        #cameras = sourcesession.query(Cameras).filter(Cameras.image_id.in_(ids)).all()
-        #for c in cameras:
-        #    destinationsession.merge(c)
+            # Get the camera objects to manually join. Keeps the caller from
+            # having to remember to bring cameras as well.
+            ids = [i[0] for i in sourceimages]
+            #cameras = sourcesession.query(Cameras).filter(Cameras.image_id.in_(ids)).all()
+            #for c in cameras:
+            #    destinationsession.merge(c)
 
-        destinationsession.commit()
-        destinationsession.close()
         sourcesession.close()
 
         # Create the graph, copy the images, and compute the overlaps
-        obj = cls.from_database()
-        obj.copy_images(path)
-        obj._execute_sql(compute_overlaps_sql)
-        return obj
-
-    @classmethod
-    def from_database(cls, query_string='SELECT * FROM public.images'):
+        self.copy_images(path)
+        self.from_database()
+        self._execute_sql(compute_overlaps_sql)
+        
+    def from_database(self, query_string='SELECT * FROM public.images'):
         """
         This is a constructor that takes the results from an arbitrary query string,
         uses those as a subquery into a standard polygon overlap query and
@@ -1776,23 +1904,21 @@ WHERE
         WHERE ST_INTERSECTS(i1.geom, i2.geom) = TRUE
         AND i1.id < i2.id'''.format(query_string)
 
-        session = Session()
-        res = session.execute(composite_query)
+        with self.session_scope() as session:
+            res = session.execute(composite_query)
 
-        adjacency = defaultdict(list)
-        adjacency_lookup = {}
-        for r in res:
-            sid, spath, did, dpath = r
+            adjacency = defaultdict(list)
+            adjacency_lookup = {}
+            for r in res:
+                sid, spath, did, dpath = r
 
-            adjacency_lookup[spath] = sid
-            adjacency_lookup[dpath] = did
-            if spath != dpath:
-                adjacency[spath].append(dpath)
-        session.close()
+                adjacency_lookup[spath] = sid
+                adjacency_lookup[dpath] = did
+                if spath != dpath:
+                    adjacency[spath].append(dpath)
+        
         # Add nodes that do not overlap any images
-        obj = cls(adjacency, node_id_map=adjacency_lookup, config=config)
-
-        return obj
+        self.__init__(adjacency, node_id_map=adjacency_lookup)
 
     @staticmethod
     def clear_db(tables=None):
@@ -1811,7 +1937,7 @@ WHERE
             if isinstance(tables, str):
                 tables = [tables]
         else:
-            tables = engine.table_names()
+            tables = self.engine.table_names()
 
         for t in tables:
           if t != 'spatial_ref_sys':
@@ -1824,14 +1950,14 @@ WHERE
         session.close()
 
     def place_points_from_cnet(self, cnet):
-        semi_major, semi_minor = config["spatial"]["semimajor_rad"], config["spatial"]["semiminor_rad"]
+        semi_major, semi_minor = self.config["spatial"]["semimajor_rad"], self.config["spatial"]["semiminor_rad"]
 
         if isinstance(cnet, str):
             cnet = from_isis(cnet)
 
         cnetpoints = cnet.groupby('id')
         points = []
-        session = Session()
+        session = self.Session()
 
         for id, cnetpoint in cnetpoints:
             def get_measures(row):
@@ -1881,7 +2007,7 @@ WHERE
 
     @property
     def measures(self):
-        df = pd.read_sql_table('measures', con=engine)
+        df = pd.read_sql_table('measures', con=self.engine)
         return df
 
     @property
@@ -1892,19 +2018,82 @@ WHERE
         called on next cluster job launch, causing failures. This method provides
         a quick check for left over jobs.
         """
-        conf = config['redis']
-        queue = StrictRedis(host=conf['host'],
-                            port=conf['port'])
-        llen = queue.llen(conf['processing_queue'])
+        llen = self.redis_queue.llen(self.config['redis']['processing_queue'])
         return llen
 
-    @staticmethod
-    def queue_flushdb():
+    def queue_flushdb(self):
         """
         Clear the processing queue of any left over jobs from a previous cluster
         job cancellation or hanging jobs.
         """
-        conf = config['redis']
-        queue = StrictRedis(host=conf['host'],
-                            port=conf['port'])
-        queue.flushdb()
+        self.redis_queue.flushdb()
+
+    def cluster_propagate_control_network(self, 
+                                          base_cnet, 
+                                          walltime='00:20:00', 
+                                          chunksize=1000, 
+                                          exclude=None):
+        warnings.warn('This function is not well tested. No tests currently exists \
+        in the test suite for this version of the function.')
+
+        # Setup the redis queue
+        rqueue = StrictRedis(host=config['redis']['host'],
+                             port=config['redis']['port'],
+                             db=0)
+
+        # Push the job messages onto the queue
+        queuename = config['redis']['processing_queue']
+
+        groups = base_cnet.groupby('pointid').groups
+        for cpoint, indices in groups.items():
+            measures = base_cnet.loc[indices]
+            measure = measures.iloc[0]
+
+            p = measure.point
+
+            # get image in the destination that overlap
+            lon, lat = measures["point"].iloc[0].xy
+            msg = {'lon' : lon[0],
+                   'lat' : lat[0],
+                   'pointid' : cpoint,
+                   'paths' : measures['path'].tolist(),
+                   'lines' : measures['line'].tolist(),
+                   'samples' : measures['sample'].tolist(),
+                   'walltime' : walltime}
+            rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
+
+        # Submit the jobs
+        submitter = Slurm('acn_propagate',
+                     job_name='cross_instrument_matcher',
+                     mem_per_cpu=config['cluster']['processing_memory'],
+                     time=walltime,
+                     partition=config['cluster']['queue'],
+                     output=config['cluster']['cluster_log_dir']+'/autocnet.cim-%j')
+        job_counter = len(groups.items())
+        submitter.submit(array='1-{}'.format(job_counter))
+        return job_counter
+    
+    def subpixel_register_points(self, **kwargs):
+        subpixel.subpixel_register_points(self.Session, **kwargs)
+
+    def subpixel_register_point(self, pointid, **kwargs):
+        subpixel.subpixel_register_point(self.Session, pointid, **kwarg)
+
+    def subpixel_regiter_mearure(self, measureid, **kwargs):
+        subpixel.subpixel_register_measure(self.Session, measureid, **kwargs)
+
+    def propagate_control_network(self, control_net, **kwargs):
+        cim.propagate_control_network(self.Session, 
+                                      self.config, 
+                                      self.dem,
+                                      control_net) 
+
+    def generate_ground_points(self, ground_mosaic, **kwargs):
+        cim.generate_ground_points(self.Session, ground_mosaic, **kwargs)
+
+    def place_points_in_overlaps(self, nodes, **kwargs):
+        overlap.place_points_in_overlaps(self.Session,
+                                         self.config,
+                                         self.dem,
+                                         nodes, 
+                                         **kwargs)
