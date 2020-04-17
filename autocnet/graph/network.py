@@ -1487,11 +1487,14 @@ class NetworkCandidateGraph(CandidateGraph):
 
             self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
         return job_counter + 1
-
-    def _push_row_messages(self, query_obj, on, function, walltime, filters, args, kwargs):
+    
+    def _push_row_messages(self, query_obj, on, function, walltime, filters, query_string, args, kwargs):
         """
         Push messages to the redis queue for DB objects e.g., Points, Measures
         """
+        if filters and query_string:
+            warnings.warn('Use of filters and query_string are mutually exclusive.')
+
         with self.session_scope() as session:
             query = session.query(query_obj)
 
@@ -1501,7 +1504,20 @@ class NetworkCandidateGraph(CandidateGraph):
 
             # Execute the query to get the rows to be processed
             res = query.all()
+            
+            # Support either an SQL query string, or a simple dict based query
+            if query_string:
+                res = session.execute(query_string).fetchall()
+            else:
+                query = session.query(query_obj)
 
+                # Now apply any filters that might be passed in.
+                for attr, value in filters.items():
+                    query = query.filter(getattr(query_obj, attr)==value)
+                
+                # Execute the query to get the rows to be processed
+                res = query.all()
+                
             if len(res) == 0:
                 raise ValueError('Query returned zero results.')
             for row in res:
@@ -1516,7 +1532,7 @@ class NetworkCandidateGraph(CandidateGraph):
                                     json.dumps(msg, cls=JsonEncoder))
         return len(res)
 
-    def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, filters={}, **kwargs):
+    def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, filters={}, query_string='', **kwargs):
         """
         A mirror of the apply function from the standard CandidateGraph object. This implementation
         dispatches the job to the cluster as an independent operation instead of applying an arbitrary function
@@ -1542,6 +1558,49 @@ class NetworkCandidateGraph(CandidateGraph):
 
         walltime : str
                    in the format Hour:Minute:Second, 00:00:00
+
+        chunksize : int
+                    The maximum number of jobs to submit per job array. Defaults to 1000.
+                    This number may be have an actualy higher or lower limited based on 
+                    how the cluster has been configured.
+        
+        filters : dict
+                  Of simple filters to apply on database rows where the key is the attribute and
+                  the value used to check equivalency (e.g., attribute == value). 
+                  This is usable only when applying to measures, points, or overlays.
+                  Filters can not be used with a query_string. Filters are included as a convenience 
+                  and are really only usable for simple equivalency checks.
+
+        query_string : str
+                       A SQL query to be applied to the iterable.
+                       This is usable only when applying to measures, points, or overlays.
+                       The query_string can not be used with a filter and is appropriate for
+                       any queries. 
+
+        kwargs : dict
+                 Of keyword arguments passed to the function being applied
+
+        Examples
+        --------
+        Apply a function to the overlay table omitting those overlay rows that already have 
+        points within them and have an area less than a given threshold.
+
+        >>> query_string = 'SELECT overlay.id FROM overlay LEFT JOIN\
+            points ON ST_INTERSECTS(overlay.geom, points.geom) WHERE\
+                points.id IS NULL AND ST_AREA(overlay.geom) >= 0.0001;'
+        >>> njobs = ncg.apply('spatial.overlap.place_points_in_overlap', on='overlaps', query_string=query_string)
+
+        Apply a function to the overlay table and pass keyword arguments (kwargs) to the function.
+
+        >>> def ns(x):
+                from math import ceil
+                return ceil(round(x,1)*8)
+        >>> def ew(x):
+                from math import ceil
+                return ceil(round(x,1)*2)
+        >>> distribute_points_kwargs = {'nspts_func':ns, 'ewpts_func':ew, 'method':'classic'}
+        >>> njobs = ncg.apply('spatial.overlap.place_points_in_overlap',\
+            on='overlaps', distribute_points_kwargs=distribute_points_kwargs)
         """
 
         # Determine which obj will be called
@@ -1551,7 +1610,7 @@ class NetworkCandidateGraph(CandidateGraph):
         if not isinstance(function, (str, bytes)):
             raise TypeError('Function argument must be a string or bytes object.')
         if isinstance(onobj, DeclarativeMeta):
-            job_counter = self._push_row_messages(onobj, on, function, walltime, filters, args, kwargs)
+            job_counter = self._push_row_messages(onobj, on, function, walltime, filters, query_string, args, kwargs)
         else:
             job_counter = self._push_obj_messages(onobj, function, walltime, args, kwargs)
 
