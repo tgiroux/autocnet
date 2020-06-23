@@ -13,12 +13,13 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 from redis import StrictRedis
+import shapely
 
+import geoalchemy2
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 import shapely.affinity
 import shapely.geometry
 import shapely.wkt as swkt
-import shapely.wkb as swkb
 import shapely.ops
 
 from plio.io.io_controlnetwork import to_isis, from_isis
@@ -27,6 +28,7 @@ from plio.utils import utils as io_utils
 from plio.io.io_gdal import GeoDataset
 from plio.io.isis_serial_number import generate_serial_number
 from plio.io import io_controlnetwork as cnet
+
 
 from plurmy import Slurm
 
@@ -37,6 +39,7 @@ from autocnet.graph import markov_cluster
 from autocnet.graph.edge import Edge, NetworkEdge
 from autocnet.graph.node import Node, NetworkNode
 from autocnet.io import network as io_network
+from autocnet.io.db import controlnetwork as io_controlnetwork
 from autocnet.io.db.model import (Images, Keypoints, Matches, Cameras, Points,
                                   Base, Overlay, Edges, Costs, Measures, JsonEncoder,
                                   try_db_creation)
@@ -1389,6 +1392,21 @@ class NetworkCandidateGraph(CandidateGraph):
         # is the best solution I think. I don't want to pass the DEM around
         # for the sensor calls.
         self._setup_dem()
+    
+    @contextmanager
+    def session_scope(self):
+     """
+     Provide a transactional scope around a series of operations.
+     """
+     session = self.Session()
+     try:
+         yield session
+         session.commit()
+     except:
+         session.rollback()
+         raise
+     finally:
+         session.close()
 
     def _setup_dem(self):
         spatial = self.config['spatial']
@@ -1415,21 +1433,6 @@ class NetworkCandidateGraph(CandidateGraph):
                                        port=conf['port'],
                                        db=0)
         self.processing_queue = conf['processing_queue']
-
-    @contextmanager
-    def session_scope(self):
-     """
-     Provide a transactional scope around a series of operations.
-     """
-     session = self.Session()
-     try:
-         yield session
-         session.commit()
-     except:
-         session.rollback()
-         raise
-     finally:
-         session.close()
 
     def empty_queues(self):
         """
@@ -1661,87 +1664,54 @@ class NetworkCandidateGraph(CandidateGraph):
         if msg['success'] == True:
             return
 
-    def to_isis(self, path, flistpath=None,sql = """
-SELECT measures."pointid",
-        points."pointType",
-        points."apriori",
-        points."adjusted",
-        points."pointIgnore",
-        measures."id",
-        measures."serialnumber",
-        measures."sample",
-        measures."line",
-        measures."measureType",
-        measures."imageid",
-        measures."measureIgnore",
-        measures."measureJigsawRejected",
-        measures."aprioriline",
-        measures."apriorisample"
-FROM measures
-INNER JOIN points ON measures."pointid" = points."id"
-WHERE
-    points."pointIgnore" = False AND
-    measures."measureIgnore" = FALSE AND
-    measures."measureJigsawRejected" = FALSE AND
-    measures."imageid" NOT IN
-        (SELECT measures."imageid"
-        FROM measures
-        INNER JOIN points ON measures."pointid" = points."id"
-        WHERE measures."measureIgnore" = False and measures."measureJigsawRejected" = False AND points."pointIgnore" = False
-        GROUP BY measures."imageid"
-        HAVING COUNT(DISTINCT measures."pointid")  < 3)
-ORDER BY measures."pointid", measures."id";
-"""):
+    def to_isis(self, 
+                path, 
+                flistpath=None, 
+                latsigma=10,
+                lonsigma=10,
+                radsigma=15,
+                **db_kwargs):
         """
-        Given a set of points/measures in an autocnet database, generate an ISIS
-        compliant control network.
+        Write a NetworkCandidateGraph to an ISIS control network
 
         Parameters
         ----------
         path : str
-               The full path to the output network.
+               Outpath to write the control network
 
-        flistpath : str
-                    (Optional) the path to the output filelist. By default
-                    the outout filelist path is genrated programatically
-                    as the provided path with the extension replaced with .lis.
-                    For example, out.net would have an associated out.lis file.
+        flishpath : str
+                    Outpath to write the associated file list. If None (default), 
+                    the file list is written alongside the control network
+        
+        latsigma : int/float
+               The estimated sigma (error) in the latitude direction
 
-        sql : str
-              The sql query to execute in the database.
+        lonsigma : int/float
+                The estimated sigma (error) in the longitude direction
 
-        """
+        radsigma : int/float
+                The estimated sigma (error) in the radius direction
 
-        df = pd.read_sql(sql, self.engine)
+        radius : int/float
+                The body semimajor radius
 
-        # measures.id DB column was read in to ensure the proper ordering of DF
-        # so the correct measure is written as reference
-        del df['id']
-        df.rename(columns = {'pointid': 'id'}, inplace=True)
+        db_kwargs : dict
+                    Kwargs that are passed to the io.db.controlnetwork.db_to_df function
 
-        #create columns in the dataframe; zeros ensure plio (/protobuf) will
-        #ignore unless populated with alternate values
-        df['aprioriX'] = 0
-        df['aprioriY'] = 0
-        df['aprioriZ'] = 0
-        df['adjustedX'] = 0
-        df['adjustedY'] = 0
-        df['adjustedZ'] = 0
-
-        #only populate the new columns for ground points. Otherwise, isis will
-        #recalculate the control point lat/lon from control measures which where
-        #"massaged" by the phase and template matcher.
-        for i, row in df.iterrows():
-            if row['pointType'] == 3 or row['pointType'] == 4:
-                apriori_geom = swkb.loads(row['apriori'], hex=True)
-                row['aprioriX'] = apriori_geom.x
-                row['aprioriY'] = apriori_geom.y
-                row['aprioriZ'] = apriori_geom.z
-                adjusted_geom = swkb.loads(row['adjusted'], hex=True)
-                row['adjustedX'] = adjusted_geom.x
-                row['adjustedY'] = adjusted_geom.y
-                row['adjustedZ'] = adjusted_geom.z
-                df.iloc[i] = row
+        Returns
+        -------
+        None
+        
+        """        
+        # Read the cnet from the db
+        df = io_controlnetwork.db_to_df(self.engine, **db_kwargs)
+        
+        # Add the covariance matrices to ground measures
+        df = control.compute_covariance(df, 
+                                        latsigma, 
+                                        lonsigma, 
+                                        radsigma, 
+                                        self.config['spatial']['semimajor_rad'])
 
         if flistpath is None:
             flistpath = os.path.splitext(path)[0] + '.lis'
@@ -1753,6 +1723,10 @@ ORDER BY measures."pointid", measures."id";
             if f not in fpaths:
                 warnings.warn(f'{f} in candidate graph but not in output network.')
 
+        # Remap the df columns back to ISIS
+        df.rename(columns={'pointtype':'pointType',
+                           'measuretype':'measureType'},
+                           inplace=True)
         cnet.to_isis(df, path, targetname=target)
         cnet.write_filelist(fpaths, path=flistpath)
 
@@ -1827,8 +1801,7 @@ ORDER BY measures."pointid", measures."id";
 
         obj = cls.from_database()
         # Execute the computation to compute overlapping geometries
-        obj._execute_sql(compute_overlaps_sql)
-
+        obj._execute_sql(compute_overlaps_sql) 
         return obj
 
     def copy_images(self, newdir):
@@ -1856,7 +1829,6 @@ ORDER BY measures."pointid", measures."id";
                     session.commit()
                 else:
                     continue
-
 
     def add_from_remote_database(self, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
         """
@@ -2071,7 +2043,7 @@ ORDER BY measures."pointid", measures."id";
         networkobj = cls.from_filelist(filelist)
         networkobj.place_points_from_cnet(cnet)
         return networkobj
-
+    
     @property
     def measures(self):
         df = pd.read_sql_table('measures', con=self.engine)
