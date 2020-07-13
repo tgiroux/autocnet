@@ -9,8 +9,19 @@ from scipy.spatial import cKDTree
 from skimage.feature import blob_log, blob_doh
 from math import sqrt, atan2, pi
 
+import matplotlib
+from matplotlib import pyplot as plt
+
+from shapely import wkt
+from shapely.geometry import Point, MultiPoint
+import pandas as pd
+import geopandas as gpd
+
+import pysis
+
 from autocnet.utils.utils import bytescale
 from autocnet.matcher.cpu_extractor import extract_features
+
 
 def image_diff(arr1, arr2):
      arr1 = arr1.astype("float32")
@@ -18,14 +29,41 @@ def image_diff(arr1, arr2):
      arr1[arr1 == 0] = np.nan
      arr2[arr2 == 0] = np.nan
 
+     isis_null = pysis.specialpixels.SPECIAL_PIXELS['Real']['Null']
+     arr1[arr1 == isis_null] = np.nan
+     arr2[arr2 == isis_null] = np.nan
+
      diff = arr1-arr2
      diff[np.isnan(diff)] = 0
 
      return diff
 
 
+def image_ratio(arr1, arr2):
+     arr1 = arr1.astype("float32")
+     arr2 = arr2.astype("float32")
+     arr1[arr1 == 0] = np.nan
+     arr2[arr2 == 0] = np.nan
+
+     isis_null = pysis.specialpixels.SPECIAL_PIXELS['Real']['Null']
+     arr1[arr1 == isis_null] = np.nan
+     arr2[arr2 == isis_null] = np.nan
+
+     ratio = arr1/arr2
+     ratio[np.isnan(ratio)] = 0
+
+     return ratio
+
+
 def image_diff_sq(arr1, arr2):
      return image_diff(arr1, arr2)**2
+
+
+func_map = {
+    "diff" : image_diff,
+    "diff_sq": image_diff_sq,
+    "ratio" : image_ratio
+}
 
 
 def okubogar_detector(image1, image2, nbins=50, extractor_method="orb", image_func=image_diff,
@@ -37,13 +75,7 @@ def okubogar_detector(image1, image2, nbins=50, extractor_method="orb", image_fu
      Largely based on a method created by Chris Okubo and Brendon Bogar. Histogram step
      was added for readability.
 
-
-
-     image1
-           \
-             image subtraction/ratio -> feature_extraction -> feature_histogram
-           /
-     image2
+     image1, image2 -> image subtraction/ratio -> feature extraction -> feature histogram
 
      TODO: Paper/abstract might exist, cite
 
@@ -87,6 +119,14 @@ def okubogar_detector(image1, image2, nbins=50, extractor_method="orb", image_fu
      extractor_kwargs : dict
                         A dictionary containing OpenCV SIFT parameters names and values.
 
+     Returns
+     -------
+     : pd.DataFrame
+       Dataframe containing polygon results as wkt
+
+     : np.array
+       Numpy array image, the image used to compute change
+
      See Also
      --------
 
@@ -99,6 +139,12 @@ def okubogar_detector(image1, image2, nbins=50, extractor_method="orb", image_fu
      if isinstance(image2, GeoDataset):
          image2 = image2.read_array()
 
+     if isinstance(image_func, str):
+         try:
+             image_func = func_map[image_func]
+         except KeyError as e:
+             raise Exception(f"{image_func} is not a valid method, available image functions: {func_map.keys()}")
+
      image1[image1 == image1.min()] = 0
      image2[image2 == image2.min()] = 0
      arr1 = bytescale(image1)
@@ -109,17 +155,20 @@ def okubogar_detector(image1, image2, nbins=50, extractor_method="orb", image_fu
      keys, descriptors = extract_features(bdiff, extractor_method, extractor_parameters=extractor_kwargs)
      x,y = keys["x"], keys["y"]
 
-     points = [Point(xval, yval) for xval,yval in zip(x,y)]
-
      heatmap, xedges, yedges = np.histogram2d(y, x, bins=nbins, range=[[0, bdiff.shape[0]], [0, bdiff.shape[1]]])
      heatmap = cv2.resize(heatmap, dsize=(bdiff.shape[1], bdiff.shape[0]), interpolation=cv2.INTER_NEAREST)
 
-     return points, heatmap, bdiff
+     #square image to improve signal to noise ratio
+     heatmap = heatmap**2
+
+     keys = gpd.GeoDataFrame(keys, geometry= gpd.points_from_xy(keys.x, keys.y))
+
+     return keys, heatmap, bdiff
 
 
-def okbm_detector(image1, image2, nbins=50, extractor_method="orb",  image_func=image_diff,
+def okbm_detector(image1, image2, extractor_method="orb",  image_func=image_diff,
                  extractor_kwargs={"nfeatures": 2000, "scaleFactor": 1.1, "nlevels": 1},
-                 cluster_params={"min_samples": 10, "max_eps": 10, "eps": .5, "xi":.5}):
+                 cluster_kwargs={"min_samples": 10, "max_eps": 10, "eps": .5, "xi":.5}):
      """
      okobubogar modified detector, experimental feature based change detection algorithmthat expands on okobubogar to allow for
      programmatic change detection. Returns detected feature changes as weighted polygons.
@@ -155,9 +204,6 @@ def okbm_detector(image1, image2, nbins=50, extractor_method="orb",  image_func=
                   >>> image1, image2 = random.random((50,50)), random.random((50,50))
                   >>> results = okbm_detector(image1, image2, image_func=lambda im1, im2: im1/im2)
 
-     nbins : int
-            number of bins to use in the 2d histogram
-
      extractor_method : {'orb', 'sift', 'fast', 'surf', 'vl_sift'}
                The detector method to be used.  Note that vl_sift requires that
                vlfeat and cyvlfeat dependencies be installed.
@@ -165,30 +211,24 @@ def okbm_detector(image1, image2, nbins=50, extractor_method="orb",  image_func=
      extractor_kwargs : dict
                         A dictionary containing OpenCV SIFT parameters names and values.
 
-     cluster_params : dict
+     cluster_kwargs : dict
                       A dictionary containing sklearn.cluster.OPTICS parameters
 
+     Returns
+     -------
+     : pd.DataFrame
+       Dataframe containing polygon results as wkt
+
+     : np.array
+       Numpy array image, the image used to compute change
+
      """
+     keys, _, bdiff = okubogar_detector(image1, image2, 10, extractor_method, image_func, extractor_kwargs)
 
-     if isinstance(image1, GeoDataset):
-         image1 = image1.read_array()
-
-     if isinstance(image2, GeoDataset):
-         image2 = image2.read_array()
-
-     image1[image1 == image1.min()] = 0
-     image2[image2 == image2.min()] = 0
-     arr1 = bytescale(image1)
-     arr2 = bytescale(image2)
-
-     bdiff = image_func(arr1, arr2)
-
-     keys, descriptors = extract_features(bdiff, extractor_method, extractor_parameters=extractor_kwargs)
-     x,y = keys["x"], keys["y"]
-
+     x,y = keys['x'], keys['y']
      points = [Point(xval, yval) for xval,yval in zip(x,y)]
 
-     optics = OPTICS(**cluster_params).fit(list(zip(x,y)))
+     optics = OPTICS(**cluster_kwargs).fit(list(zip(x,y)))
 
      classes = gpd.GeoDataFrame(columns=["label", "point"], geometry="point")
      classes["label"] = optics.labels_
@@ -220,7 +260,10 @@ def okbm_detector(image1, image2, nbins=50, extractor_method="orb",  image_func=
          polys.append(poly)
          weights.append(weight)
 
-     return polys, weights, bdiff
+     results = gpd.GeoDataFrame(geometry=polys)
+     results['weight'] = weights
+
+     return results, bdiff
 
 
 def blob_detector(image1, image2, sub_solar_azimuth, image_func=image_diff_sq,
@@ -334,12 +377,12 @@ def blob_detector(image1, image2, sub_solar_azimuth, image_func=image_diff_sq,
      Returns
      -------
 
-     changes : np.ndarray
-               A numpy array containing candidate change points in the form (y,x,radius)
+     : pd.DataFrame
+       A pandas dataframe containing a points of changed areas
 
-     bdiff : np.ndarray
-             A numpy array containing the image upon which the change detection
-             algorithm operates, i.e. the image resulting from image_func.
+     : np.ndarray
+       A numpy array containing the image upon which the change detection
+       algorithm operates, i.e. the image resulting from image_func.
 
      """
 
@@ -361,6 +404,12 @@ def blob_detector(image1, image2, sub_solar_azimuth, image_func=image_diff_sq,
      if isinstance(image2, GeoDataset):
          image2 = image2.read_array()
 
+     if isinstance(image_func, str):
+         try:
+             image_func = func_map[image_func]
+         except KeyError as e:
+             raise Exception(f"{image_func} is not a valid method, available image functions: {func_map.keys()}")
+
      bdiff = image_func(image1,image2)
      bdiff = bytescale(bdiff)
 
@@ -376,12 +425,17 @@ def blob_detector(image1, image2, sub_solar_azimuth, image_func=image_diff_sq,
      blobs_log_inv = blob_log(inv, min_sigma=min_sigma, max_sigma=max_sigma,
                               num_sigma=num_sigma, threshold=threshold, overlap=overlap,
                               log_scale=log_scale, exclude_border=exclude_border)
+
      # Compute radii in the 3rd column.  Radii are appx equal to sqrt2 * sigma
      blobs_log[:, 2] = blobs_log[:, 2] * sqrt(2)
      blobs_log_inv[:, 2] = blobs_log_inv[:, 2] * sqrt(2)
 
+     if not len(blobs_log) or not len(blobs_log_inv):
+         raise Exception("No blobs detected")
+
      # Create a KDTree to facilitate nearest neighbor search
      tree = cKDTree(blobs_log)
+
      # Query the kdtree to find neighboring points
      _, idx_log = tree.query(blobs_log_inv, k=n_neighbors,
                                     distance_upper_bound=dist_upper_bound)
@@ -392,7 +446,7 @@ def blob_detector(image1, image2, sub_solar_azimuth, image_func=image_diff_sq,
      # Nearest neighbors
      neighbors = [blobs_log[j] for j in [i[i!=len(blobs_log)]for i in idx_log] if j.size > 0]
 
-     changes = []
+     polys = []
      for idx, pt1 in enumerate(close_points):
          for pt2 in neighbors[idx]:
              try:
@@ -400,7 +454,10 @@ def blob_detector(image1, image2, sub_solar_azimuth, image_func=image_diff_sq,
              except IndexError as e:
                  azimuth = sub_solar_azimuth
              if is_azimuth_colinear(pt1, pt2, azimuth, angle_tolerance, subtractive):
-                 changes.append([pt1,pt2])
-     changes = np.array(changes)
+                 if subtractive:
+                     polys.append(Point(pt1[1], pt1[0]))
+                 else:
+                     polys.append(Point(pt2[1], pt2[0]))
 
+     changes = gpd.GeoDataFrame(geometry=polys)
      return changes, bdiff
