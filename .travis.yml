@@ -64,7 +64,7 @@ script:
 
 after_success:
   - coveralls
- 
+
 deploy:
   provider: script
   skip_cleanup: true
