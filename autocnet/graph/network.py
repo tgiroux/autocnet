@@ -194,8 +194,7 @@ class CandidateGraph(nx.Graph):
 
         return unmatched
 
-    @classmethod
-    def from_filelist(cls, filelist, basepath=None):
+    def from_filelist(self, filelist, basepath=None):
         """
         Instantiate the class using a filelist as a python list.
         An adjacency structure is calculated using the lat/lon information in the
@@ -246,10 +245,9 @@ class CandidateGraph(nx.Graph):
             except:
                 warnings.warn(
                     'Failed to calculate intersection between {} and {}'.format(i, j))
-        return cls.from_adjacency(adjacency_dict)
+        return self.from_adjacency(adjacency_dict)
 
-    @classmethod
-    def from_adjacency(cls, input_adjacency, node_id_map=None, basepath=None, **kwargs):
+    def from_adjacency(self, input_adjacency, node_id_map=None, basepath=None, **kwargs):
         """
         Instantiate the class using an adjacency dict or file. The input must contain relative or
         absolute paths to image files.
@@ -274,7 +272,7 @@ class CandidateGraph(nx.Graph):
         """
         if not isinstance(input_adjacency, dict):
             input_adjacency = io_json.read_json(input_adjacency)
-        return cls(input_adjacency, basepath=basepath, node_id_map=node_id_map, **kwargs)
+        return self.__init__(input_adjacency, basepath=basepath, node_id_map=node_id_map, **kwargs)
 
     @classmethod
     def from_save(cls, input_file):
@@ -1762,8 +1760,7 @@ class NetworkCandidateGraph(CandidateGraph):
             session.execute(sql)
             session.commit()
 
-    @classmethod
-    def from_filelist(cls, filelist, clear_db=False):
+    def from_filelist(self, filelist, clear_db=False):
         """
         Parse a filelist to add nodes to the database. Using the
         information in the database, then instantiate a complete,
@@ -1789,7 +1786,7 @@ class NetworkCandidateGraph(CandidateGraph):
             warnings.warn('Unable to parse the passed filelist')
 
         if clear_db:
-            cls.clear_db()
+            self.clear_db()
 
         total=len(filelist)
         for cnt, f in enumerate(filelist):
@@ -1799,10 +1796,9 @@ class NetworkCandidateGraph(CandidateGraph):
             image_name = os.path.basename(f)
             NetworkNode(image_path=f, image_name=image_name)
 
-        obj = cls.from_database()
+        self.from_database()
         # Execute the computation to compute overlapping geometries
-        obj._execute_sql(compute_overlaps_sql)
-        return obj
+        self._execute_sql(compute_overlaps_sql)
 
     def copy_images(self, newdir):
         """
@@ -1959,8 +1955,7 @@ class NetworkCandidateGraph(CandidateGraph):
         # Add nodes that do not overlap any images
         self.__init__(adjacency, node_id_map=adjacency_lookup)
 
-    @staticmethod
-    def clear_db(tables=None):
+    def clear_db(self, tables=None):
         """
         Truncate all of the database tables and reset any
         autoincrement columns to start with 1.
@@ -1970,7 +1965,7 @@ class NetworkCandidateGraph(CandidateGraph):
         table : str or list of str, optional
                 the table name of a list of table names to truncate
         """
-        session = Session()
+        session = self.Session()
         session.rollback() # In case any transactions are not done
         if tables:
             if isinstance(tables, str):
