@@ -1619,7 +1619,7 @@ class NetworkCandidateGraph(CandidateGraph):
         isisdata = env['ISISDATA']
 
         isissetup = f'export ISISROOT={isisroot} && export ISIS3DATA={isisdata}'
-        condasetup = f'which conda ; source activate {condaenv}'
+        condasetup = f'source activate {condaenv}'
         job = f'acn_submit -r={rhost} -p={rport} {processing_queue}'
         command = f'{condasetup} && {isissetup} && {job}'
 

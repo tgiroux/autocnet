@@ -868,14 +868,6 @@ def subpixel_register_point(pointid,
                 resultlog.append(currentlog)
                 continue
 
-            cost = cost_func(dist, template_metric)
-
-            if cost <= threshold:
-                measure.ignore = True # Threshold criteria not met
-                currentlog['status'] = f'Cost failed. Distance shifted: {dist}. Metric: {template_metric}.'
-                resultlog.append(currentlog)
-                continue
-
             if iterative_phase_kwargs:
                 measure.template_metric = metric[0]
                 measure.template_shift = dist[0]
