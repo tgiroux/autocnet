@@ -809,22 +809,20 @@ def subpixel_register_point(pointid,
             destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
             destination_node.parent = ncg
 
-            new_x, new_y, dist, metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
+
+            try:
+                new_x, new_y, dist, metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
                                                         source.sample, source.line,
                                                         template_kwargs=subpixel_template_kwargs,
                                                         phase_kwargs=iterative_phase_kwargs, size_x=100, size_y=100)
+            except Exception as e:
+                currentlog['status'] = f'Failed to register measure {measure.id}'
+                measure.ignore = True
+                continue
 
             if new_x == None or new_y == None:
                 measure.ignore = True # Unable to phase match
                 currentlog['status'] = 'Failed to geom match.'
-                resultlog.append(currentlog)
-                continue
-            # cost = cost_func(dist, template_metric)
-            cost = 1
-
-            if cost <= threshold:
-                measure.ignore = True # Threshold criteria not met
-                currentlog['status'] = f'Cost failed. Distance shifted: {dist}. Metric: {template_metric}.'
                 resultlog.append(currentlog)
                 continue
 
@@ -837,6 +835,14 @@ def subpixel_register_point(pointid,
             else:
                 measure.template_metric = metric
                 measure.template_shift = dist
+
+            cost = cost_func(measure.template_shift, measure.template_metric)
+
+            if cost <= threshold:
+                measure.ignore = True # Threshold criteria not met
+                currentlog['status'] = f'Cost failed. Distance shifted: {measure.template_shift}. Metric: {measure.template_metric}.'
+                resultlog.append(currentlog)
+                continue
 
             # Update the measure
             measure.sample = new_x

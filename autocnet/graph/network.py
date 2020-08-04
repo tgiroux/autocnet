@@ -1497,15 +1497,6 @@ class NetworkCandidateGraph(CandidateGraph):
             warnings.warn('Use of filters and query_string are mutually exclusive.')
 
         with self.session_scope() as session:
-            query = session.query(query_obj)
-
-            # Now apply any filters that might be passed in.
-            for attr, value in filters.items():
-                query = query.filter(getattr(query_obj, attr)==value)
-
-            # Execute the query to get the rows to be processed
-            res = query.all()
-
             # Support either an SQL query string, or a simple dict based query
             if query_string:
                 res = session.execute(query_string).fetchall()
@@ -1628,7 +1619,7 @@ class NetworkCandidateGraph(CandidateGraph):
         isisdata = env['ISISDATA']
 
         isissetup = f'export ISISROOT={isisroot} && export ISIS3DATA={isisdata}'
-        condasetup = f'conda activate {condaenv}'
+        condasetup = f'which conda ; source activate {condaenv}'
         job = f'acn_submit -r={rhost} -p={rport} {processing_queue}'
         command = f'{condasetup} && {isissetup} && {job}'
 
@@ -1638,7 +1629,7 @@ class NetworkCandidateGraph(CandidateGraph):
                      time=walltime,
                      partition=self.config['cluster']['queue'],
                      output=self.config['cluster']['cluster_log_dir']+f'/autocnet.{function}-%j')
-        submitter.submit(array='1-{}%25'.format(job_counter), chunksize=chunksize)
+        submitter.submit(array='0-{}%25'.format(job_counter), chunksize=chunksize)
         return job_counter
 
     def generic_callback(self, msg):
@@ -2109,13 +2100,13 @@ class NetworkCandidateGraph(CandidateGraph):
         return job_counter
 
     def subpixel_register_points(self, **kwargs):
-        subpixel.subpixel_register_points(self.Session, **kwargs)
+        subpixel.subpixel_register_points(Session=self.Session, **kwargs)
 
     def subpixel_register_point(self, pointid, **kwargs):
-        subpixel.subpixel_register_point(self.Session, pointid, **kwarg)
+        subpixel.subpixel_register_point(pointid, ncg=self, **kwargs)
 
-    def subpixel_regiter_mearure(self, measureid, **kwargs):
-        subpixel.subpixel_register_measure(self.Session, measureid, **kwargs)
+    def subpixel_register_measure(self, measureid, **kwargs):
+        subpixel.subpixel_register_measure(measureid, ncg=self,  **kwargs)
 
     def propagate_control_network(self, control_net, **kwargs):
         cim.propagate_control_network(self.Session,
