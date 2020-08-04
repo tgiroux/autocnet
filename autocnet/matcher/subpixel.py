@@ -851,7 +851,6 @@ def subpixel_register_point(pointid,
             destination_node.parent = ncg
 
             try:
-                new_x, new_y, dist, metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
                 print('geom_match image:', res.path)
                 new_x, new_y, dist, metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
                                                         source.sample, source.line,
