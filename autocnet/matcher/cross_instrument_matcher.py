@@ -9,7 +9,6 @@ import glob
 import json
 import os
 import os.path
-import socket
 from ctypes.util import find_library
 
 import pandas as pd
@@ -43,10 +42,10 @@ from shapely.geometry import Point
 
 from plurmy import Slurm
 
+import autocnet.spatial.project as pj
 from autocnet.io.db.model import Images, Points, Measures, JsonEncoder
 from autocnet.cg.cg import distribute_points_in_geom, xy_in_polygon
 from autocnet.io.db.connection import new_connection
-from autocnet.spatial import isis
 from autocnet.transformation.spatial import reproject, oc2og
 from autocnet.matcher.cpu_extractor import extract_most_interesting
 from autocnet.transformation import roi
@@ -104,21 +103,18 @@ def generate_ground_points(Session, ground_mosaic, nspts_func=lambda x: int(roun
     for i, coord in enumerate(coords):
         # res = ground_session.execute(formated_sql)
         p = Point(*coord)
-        print(f'point {i}'),
 
-        linessamples = isis.point_info(ground_mosaic.file_name, p.x, p.y, 'ground')
-        line = linessamples[0].get('Line')
-        sample = linessamples[0].get('Sample')
-
-        oldpoint = isis.point_info(ground_mosaic.file_name, sample, line, 'image')
-        op = Point(oldpoint[0].get('PositiveEast360Longitude'),
-                   oldpoint[0].get('PlanetocentricLatitude'))
-
+        line, sample = pj.latlon_to_pixel(ground_mosaic, lon=p.x, lat=p.y)
+        lat, lon = pj.pixel_to_latlon(ground_mosaic, sample=sample, line=line)
+        op = Point(lon, lat)
 
         image = roi.Roi(ground_mosaic, sample, line, size_x=size[0], size_y=size[1])
         image_roi = image.clip(dtype="uint64")
 
-        interesting = extract_most_interesting(bytescale(image_roi),  extractor_parameters={'nfeatures':30})
+        plt.imshow(image_roi)
+        plt.show()
+
+        interesting = extract_most_interesting(bytescale(image_roi),  extractor_parameters={'nfeatures':30, "edgeThreshold": 2})
 
         # kps are in the image space with upper left origin, so convert to
         # center origin and then convert back into full image space
@@ -126,10 +122,8 @@ def generate_ground_points(Session, ground_mosaic, nspts_func=lambda x: int(roun
         newsample = left_x + interesting.x
         newline = top_y + interesting.y
 
-        newpoint = isis.point_info(ground_mosaic.file_name, newsample, newline, 'image')
-        p = Point(newpoint[0].get('PositiveEast360Longitude'),
-                  newpoint[0].get('PlanetocentricLatitude'))
-
+        newlat, newlon = pj.pixel_to_latlon(ground_mosaic, sample=newsample, line=newline)
+        p = Point(newlon, newlat)
         if not (xy_in_polygon(p.x, p.y, fp_poly)):
                 print('Interesting point not in mosaic area, ignore')
                 continue
@@ -167,9 +161,10 @@ def propagate_point(Session,
                     samples,
                     size_x=40,
                     size_y=40,
+                    find_common_feature_kwargs = {},
                     template_kwargs={'image_size': (39, 39), 'template_size': (21, 21)},
                     verbose=False,
-                    cost=lambda x, y: y == np.max(x)):
+                    cost=lambda x, y: y == np.max(x) and np.max(x) >= .7):
     """
     Conditionally propagate a point into a stack of images. The point and all corresponding measures
     are matched against database network (to which you are propagating), best result(s) is(are) kept.
@@ -256,6 +251,7 @@ def propagate_point(Session,
     # list of matching results in the format:
     # [measure_index, x_offset, y_offset, offset_magnitude]
     match_results = []
+    g = None
     # lazily iterate for now
     for k,m in image_measures.iterrows():
         base_image = GeoDataset(m["path"])
@@ -269,25 +265,28 @@ def propagate_point(Session,
                 continue
 
             try:
-                print(f'prop point: base_image: {base_image}')
-                print(f'prop point: dest_image: {dest_image}')
-                print(f'prop point: (sx, sy): ({sx}, {sy})')
-                x,y, dist, metrics, corrmap = geom_match(base_image, dest_image, sx, sy, \
+                x, y, bx, by, dist, metrics, corrmap = geom_match(base_image, dest_image, sx, sy, \
                         size_x=size_x, size_y=size_y, \
+                        find_common_feature_kwargs = find_common_feature_kwargs,
                         template_kwargs=template_kwargs, \
                         verbose=verbose)
+
+                if find_common_feature_kwargs:
+                    lat, lon = pj.pixel_to_latlon(base_image.file_name, sample=bx, line=by)
+                    p = Point(lon, lat)
+
             except Exception as e:
-                raise Exception(e)
                 match_results.append(e)
                 continue
 
             match_results.append([k, x, y,
                                  metrics, dist, corrmap, m["path"], image["path"],
-                                 image['id'], image['serial']])
+                                 image['id'], image['serial'], p, g])
 
     # get best offsets
     match_results = np.asarray([res for res in match_results if isinstance(res, list) and all(r is not None for r in res)])
     if match_results.shape[0] == 0:
+        print("found no matches")
         # no matches
         return new_measures
 
@@ -311,11 +310,16 @@ def propagate_point(Session,
     if len(best_results[:,3])==1 and best_results[:,3][0] is None:
         return new_measures
 
+    if find_common_feature_kwargs:
+      p = best_results[0][10]
+      lon, lat = p.x, p.y
+
     px, py = dem.latlon_to_pixel(lat, lon)
     height = dem.read_array(1, [px, py, 1, 1])[0][0]
 
     semi_major = config['spatial']['semimajor_rad']
     semi_minor = config['spatial']['semiminor_rad']
+
     # The CSM conversion makes the LLA/ECEF conversion explicit
     # reprojection takes ographic lat
     lon_og, lat_og = oc2og(lon, lat, semi_major, semi_minor)
@@ -335,7 +339,7 @@ def propagate_point(Session,
             'line' : line,
             'sample' : sample,
             'point' : p,
-            'point_ecef' : Point(x, y, z)
+            'point_ecef' : point(x,y,z)
             })
 
     return new_measures
@@ -346,6 +350,7 @@ def propagate_control_network(Session,
         base_cnet,
         size_x=40,
         size_y=40,
+        find_common_feature_kwargs={},
         template_kwargs={'image_size': (39,39), 'template_size': (21,21)},
         verbose=False,
         cost=lambda x,y: y == np.max(x)):
@@ -412,23 +417,28 @@ def propagate_control_network(Session,
 
         # get image in the destination that overlap
         lon, lat = measures["point"].iloc[0].xy
-        gp_measures = propagate_point(Session,
-                                      config,
-                                      dem,
-                                      lon[0],
-                                      lat[0],
-                                      cpoint,
-                                      measures["path"],
-                                      measures["line"],
-                                      measures["sample"],
-                                      size_x,
-                                      size_y,
-                                      template_kwargs,
-                                      verbose=verbose,
-                                      cost=cost)
-
+        try:
+            gp_measures = propagate_point(Session,
+                                          config,
+                                          dem,
+                                          lon[0],
+                                          lat[0],
+                                          cpoint,
+                                          measures["path"],
+                                          measures["line"],
+                                          measures["sample"],
+                                          size_x,
+                                          size_y,
+                                          find_common_feature_kwargs=find_common_feature_kwargs,
+                                          template_kwargs=template_kwargs,
+                                          verbose=verbose,
+                                          cost=cost)
+        except Exception as e:
+            print(e)
+            continue
         # do not append if propagate_point is unable to find result
         if len(gp_measures) == 0:
+            print("empty cnet")
             continue
         constrained_net.extend(gp_measures)
 

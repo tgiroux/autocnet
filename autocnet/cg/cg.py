@@ -393,7 +393,11 @@ def distribute_points_classic(geom, nspts, ewpts, **kwargs):
     valid : list
             of point coordinates in the form [(x1,y1), (x2,y2), ..., (xn, yn)]
     """
-    geom_coords = np.column_stack(geom.exterior.xy)
+    try:
+      geom_coords = np.column_stack(geom.exterior.xy)
+    except:
+      # Multipolygon
+      geom_coords = np.column_stack(geom.envelope.exterior.xy)
 
     coords = np.array(list(zip(*geom.envelope.exterior.xy))[:-1])
 
@@ -487,6 +491,7 @@ def distribute_points_new(geom, nspts, ewpts, Session):
 def distribute_points_in_geom(geom, method="classic",
                               nspts_func=lambda x: ceil(round(x,1)*10),
                               ewpts_func=lambda x: ceil(round(x,1)*5),
+                              proj=None,
                               Session=None):
     """
     Given a geometry, attempt a basic classification of the shape.
@@ -510,11 +515,13 @@ def distribute_points_in_geom(geom, method="classic",
            The geometry object
 
     nspts_func : obj
-                 Function taking a Number and returning an int
+                 Function taking a Number and returning an int, if proj is passed in, these have to be in projection coords
 
     ewpts_func : obj
-                 Function taking a Number and returning an int
+                 Function taking a Number and returning an int, if proj is passed in, these have to be in projection coords
 
+    proj : pyproj.Proj
+           pyproj Projection object used to project the polygon into before placing points
     Returns
     -------
     valid : list
