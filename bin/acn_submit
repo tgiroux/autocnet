@@ -43,11 +43,10 @@ def _instantiate_row(msg, ncg):
     # Get the dict mapping iterable keyword types to the objects
     objdict = ncg.apply_iterable_options
     rowid = msg['id']
-
-    session = ncg.Session()
     obj = objdict[msg['along']]
-    res = session.query(obj).filter(getattr(obj, 'id')==msg['id']).one()
-    session.close()
+    with ncg.session_scope() as session:
+        res = session.query(obj).filter(getattr(obj, 'id')==msg['id']).one()
+        session.expunge(res) # Disconnect the object from the session
     return res
 
 def main(msg):
