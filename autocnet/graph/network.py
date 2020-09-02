@@ -1527,7 +1527,7 @@ class NetworkCandidateGraph(CandidateGraph):
             assert len(res) == self.queue_length
         return len(res)
 
-    def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, arraychunk=25, filters={}, query_string='', **kwargs):
+    def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, arraychunk=25, filters={}, query_string='', reapply=False, **kwargs):
         """
         A mirror of the apply function from the standard CandidateGraph object. This implementation
         dispatches the job to the cluster as an independent operation instead of applying an arbitrary function
@@ -1575,6 +1575,9 @@ class NetworkCandidateGraph(CandidateGraph):
                        This is usable only when applying to measures, points, or overlays.
                        The query_string can not be used with a filter and is appropriate for
                        any queries.
+        reapply : bool
+                  Flag indicating whether you want to resubmit jobs that are still on the queue
+                  after an initial apply due to an slurm launching errors.
 
         kwargs : dict
                  Of keyword arguments passed to the function being applied
@@ -1602,16 +1605,19 @@ class NetworkCandidateGraph(CandidateGraph):
             on='overlaps', distribute_points_kwargs=distribute_points_kwargs)
         """
 
-        # Determine which obj will be called
-        onobj = self.apply_iterable_options[on]
-        res = []
+        job_counter = self.queue_length()
 
-        if not isinstance(function, (str, bytes)):
-            raise TypeError('Function argument must be a string or bytes object.')
-        if isinstance(onobj, DeclarativeMeta):
-            job_counter = self._push_row_messages(onobj, on, function, walltime, filters, query_string, args, kwargs)
-        else:
-            job_counter = self._push_obj_messages(onobj, function, walltime, args, kwargs)
+        if not reapply:
+            # Determine which obj will be called
+            onobj = self.apply_iterable_options[on]
+            res = []
+
+            if not isinstance(function, (str, bytes)):
+                raise TypeError('Function argument must be a string or bytes object.')
+            if isinstance(onobj, DeclarativeMeta):
+                job_counter = self._push_row_messages(onobj, on, function, walltime, filters, query_string, args, kwargs)
+            else:
+                job_counter = self._push_obj_messages(onobj, function, walltime, args, kwargs)
 
 
         # Submit the jobs
@@ -1726,7 +1732,7 @@ class NetworkCandidateGraph(CandidateGraph):
         cnet.to_isis(df, path, targetname=target)
         cnet.write_filelist(fpaths, path=flistpath)
 
-    def update_from_jigsaw(self,path):
+    def update_from_jigsaw(self, path, k=10):
         """
         Updates the measures table in the database with data from
         a jigsaw bundle adjust
@@ -1735,6 +1741,9 @@ class NetworkCandidateGraph(CandidateGraph):
         ----------
         path : str
                Full path to a bundle adjusted isis control network
+
+        k    : int
+               Number of queries to split the update over
         """
         # Ingest isis control net as a df and do some massaging
         data = cnet.from_isis(path)
@@ -1742,21 +1751,23 @@ class NetworkCandidateGraph(CandidateGraph):
         data_to_update.loc[:,'adjustedCovar'] = data_to_update['adjustedCovar'].apply(lambda row : list(row))
         data_to_update.loc[:,'id'] = data_to_update['id'].apply(lambda row : int(row))
 
-        # Generate a temp table, update the real table, then drop the temp table
-        data_to_update.to_sql('temp_measures', self.engine, if_exists='replace', index_label='serialnumber', index = False)
+        split_data = np.array_split(data_to_update, k)
+        for i, sdf in enumerate(split_data):
+            # Generate a temp table, update the real table, then drop the temp table
+            sdf.to_sql(f'temp_measures_{i}', self.engine, if_exists='replace', index_label='serialnumber', index = False)
 
-        sql = """
-        UPDATE measures AS f
-        SET "measureJigsawRejected" = t."measureJigsawRejected", sampler = t."sampleResidual", liner = t."lineResidual", samplesigma = t."samplesigma", linesigma = t."linesigma", apriorisample = t."apriorisample", aprioriline = t."aprioriline"
-        FROM temp_measures AS t
-        WHERE f.serialnumber = t.serialnumber AND f.pointid = t.id;
+            sql = f"""
+            UPDATE measures AS f
+            SET "measureJigsawRejected" = t."measureJigsawRejected", sampler = t."sampleResidual", liner = t."lineResidual", samplesigma = t."samplesigma", linesigma = t."linesigma", apriorisample = t."apriorisample", aprioriline = t."aprioriline"
+            FROM temp_measures_{i} AS t
+            WHERE f.serialnumber = t.serialnumber AND f.pointid = t.id;
 
-        DROP TABLE temp_measures;
-        """
+            DROP TABLE temp_measures_{i};
+            """
 
-        with self.session_scope() as session:
-            session.execute(sql)
-            session.commit()
+            with self.session_scope() as session:
+                session.execute(sql)
+                session.commit()
 
     @classmethod
     def from_filelist(cls, filelist, clear_db=False):
