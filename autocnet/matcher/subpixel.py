@@ -3,7 +3,6 @@ from math import modf, floor
 import numpy as np
 
 from skimage.feature import register_translation
-
 from skimage import transform as tf
 
 from matplotlib import pyplot as plt
@@ -23,6 +22,12 @@ import geopandas as gpd
 import pandas as pd
 
 import pvl
+
+isis2np_types = {
+        "UnsignedByte" : "uint8",
+        "SignedWord" : "int16",
+        "Real" : "float64"
+}
 
 # TODO: look into KeyPoint.size and perhaps use to determine an appropriately-sized search/template.
 def _prep_subpixel(nmatches, nstrengths=2):
@@ -148,7 +153,6 @@ def clip_roi(img, center_x, center_y, size_x=200, size_y=200, dtype="uint64"):
             return None, 0, 0
     return subarray, axr, ayr
 
-
 def subpixel_phase(sx, sy, dx, dy,
                    s_img, d_img,
                    image_size=(51, 51),
@@ -222,11 +226,175 @@ def subpixel_phase(sx, sy, dx, dy,
 
     return dx, dy, (error, diffphase)
 
+def subpixel_transformed_template(sx, sy, dx, dy,
+                                  s_img, d_img,
+                                  transform,
+                                  image_size=(251, 251),
+                                  template_size=(51, 51),
+                                  template_buffer=5,
+                                  func=pattern_match,
+                                  verbose=False,
+                                  **kwargs):
+    """
+    Uses a pattern-matcher on subsets of two images determined from the passed-in keypoints and optional sizes to
+    compute an x and y offset from the search keypoint to the template keypoint and an associated strength.
+
+    Parameters
+    ----------
+    sx : Numeric
+         Source X coordinate
+
+    sy : Numeric
+         Source y coordinate
+
+    dx : Numeric
+         The desintation x coordinate
+
+    dy : Numeric
+         The destination y coordinate
+
+    s_img : GeoDataset
+            The source image GeoDataset
+
+    d_img : GeoDataset
+            The destination image GeoDataset
+
+    transform : object
+                A skiage transform object that has scale. The transform object is
+                used to project the template into the image.
+
+    image_size : tuple
+                 (xsize, ysize) of the image that is searched within (this should be larger
+                 than the template size)
+
+    template_size : tuple
+                    (xsize, ysize) of the template to iterate over the image in order
+                    to identify the area(s) of highest correlation.
+
+    template_buffer : int
+                      The inverse buffer applied to the transformed template image. When
+                      the warp is applied to project from the template into the image, some
+                      amount of no data exists around the edges. This variable is used to clip
+                      some number of pixels off the edges of the template. The higher the rotation
+                      the higher this value should be.
+
+    func : callable
+           The function used to pattern match
+
+    verbose : bool
+              If true, generate plots of the matches
+
+    Returns
+    -------
+    x_shift : float
+               Shift in the x-dimension
+
+    y_shift : float
+               Shift in the y-dimension
+
+    strength : float
+               Strength of the correspondence in the range [-1, 1]
+
+    corrmap : ndarray
+              An n,m array of correlation coefficients
+
+    See Also
+    --------
+    autocnet.matcher.naive_template.pattern_match : for the kwargs that can be passed to the matcher
+    autocnet.matcher.naive_template.pattern_match_autoreg : for the jwargs that can be passed to the autoreg style matcher
+    """                           
+    image_size = check_image_size(image_size)
+    template_size = check_image_size(template_size)
+    
+    template_size_x = template_size[0] * transform.scale[0]
+    template_size_y = template_size[1] * transform.scale[1]
+
+    s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
+    d_roi = roi.Roi(d_img, dx, dy, size_x=template_size_x, size_y=template_size_y)
+
+    try:
+        s_image_dtype = isis2np_types[pvl.load(s_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
+    except:
+        s_image_dtype = None
+    
+    try:
+        d_template_dtype = isis2np_types[pvl.load(d_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
+    except:
+        d_template_dtype = None
+
+    s_image = bytescale(s_roi.clip(dtype=s_image_dtype))
+    d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
+
+    if verbose:
+        fig, axs = plt.subplots(1, 5, figsize=(20,10))
+        # Plot of the original image and template
+        axs[0].imshow(s_image, cmap='Greys')
+        axs[0].set_title('Destination')
+        axs[1].imshow(d_template, cmap='Greys')
+        axs[1].set_title('Original Source')
+
+    # Build the transformation chance
+    shift_x, shift_y = d_roi.center
+    
+    tf_rotate = tf.AffineTransform(rotation=transform.rotation, shear=transform.shear)
+    tf_shift = tf.SimilarityTransform(translation=[-shift_x, -shift_y])
+    tf_shift_inv = tf.SimilarityTransform(translation=[shift_x, shift_y])
+
+    # Define the full chain and the inverse
+    trans = (tf_shift + (tf_rotate + tf_shift_inv))
+    itrans = trans.inverse
+
+    # Now apply the affine transformation
+    transformed_roi = tf.warp(d_template,
+                                itrans,
+                                order=3)
+
+    # Scale the source arr to the destination array size
+    scale_y, scale_x = transform.scale
+    template_shape_y, template_shape_x = d_template.shape
+    scaled_roi = tf.resize(transformed_roi, (int(template_shape_x/scale_x), int(template_shape_y/scale_x)))
+    
+    # Clip the transformed template to avoid no data around around the edges
+    buffered_template = scaled_roi[template_buffer:-template_buffer,template_buffer:-template_buffer]
+
+    # Apply the matcher on the transformed array
+    shift_x, shift_y, metrics, corrmap = func(bytescale(buffered_template), s_image, **kwargs)
+
+    if verbose:
+        axs[2].imshow(transformed_roi, cmap='Greys')
+        axs[2].set_title('Affine Transformed Source')
+        axs[3].imshow(buffered_template, cmap='Greys')
+        axs[3].set_title('Scaled and Buffered Source')
+        axs[4].imshow(corrmap)
+        axs[4].set_title('Correlation')
+        plt.show()
+
+    # Project the center into the affine space
+    projected_center = itrans(d_roi.center)[0]
+
+    # Shifts need to be scaled back into full resolution, affine space
+    shift_x *= scale_x
+    shift_y *= scale_y
+
+    # Apply the shifts (computed using the warped image) to the affine space center
+    new_projected_x = projected_center[0] - shift_x
+    new_projected_y = projected_center[1] - shift_y
+
+    # Project the updated location back into image space
+    new_unprojected_x, new_unprojected_y = trans([new_projected_x, new_projected_y])[0]
+
+    # Apply the shift
+    dx = d_roi.x - (d_roi.center[0] - new_unprojected_x)
+    dy = d_roi.y - (d_roi.center[1] - new_unprojected_y)
+
+    return dx, dy, metrics, corrmap
+
 def subpixel_template(sx, sy, dx, dy,
                       s_img, d_img,
                       image_size=(251, 251),
                       template_size=(51,51),
                       func=pattern_match,
+                      verbose=False,
                       **kwargs):
     """
     Uses a pattern-matcher on subsets of two images determined from the passed-in keypoints and optional sizes to
@@ -259,6 +427,12 @@ def subpixel_template(sx, sy, dx, dy,
     template_size : tuple
                     (xsize, ysize) of the template to iterate over the image in order
                     to identify the area(s) of highest correlation.
+    
+    func : callable
+           The function used to pattern match
+
+    verbose : bool
+              If true, generate plots of the matches
 
     Returns
     -------
@@ -271,26 +445,50 @@ def subpixel_template(sx, sy, dx, dy,
     strength : float
                Strength of the correspondence in the range [-1, 1]
 
+    corrmap : ndarray
+              An n,m array of correlation coefficients
+
     See Also
     --------
     autocnet.matcher.naive_template.pattern_match : for the kwargs that can be passed to the matcher
     autocnet.matcher.naive_template.pattern_match_autoreg : for the jwargs that can be passed to the autoreg style matcher
     """
-
     image_size = check_image_size(image_size)
     template_size = check_image_size(template_size)
 
+    template_size_x = template_size[0]
+    template_size_y = template_size[1]
+
     s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
-    d_roi = roi.Roi(d_img, dx, dy, size_x=template_size[0], size_y=template_size[1])
+    d_roi = roi.Roi(d_img, dx, dy, size_x=template_size_x, size_y=template_size_y)
 
-    s_image = s_roi.clip()
-    d_template = d_roi.clip()
+    try:
+        s_image_dtype = isis2np_types[pvl.load(s_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
+    except:
+        s_image_dtype = None
+    
+    try:
+        d_template_dtype = isis2np_types[pvl.load(d_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
+    except:
+        d_template_dtype = None
 
+    s_image = bytescale(s_roi.clip(dtype=s_image_dtype))
+    d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
+    
+    if verbose:
+        fig, axs = plt.subplots(1, 3, figsize=(20,10))
+        axs[0].imshow(s_image, cmap='Greys')
+        axs[1].imshow(d_template, cmap='Greys')
+        axs[3].imshow(corrmap)
+        plt.show()
+    
     if (s_image is None) or (d_template is None):
         return None, None, None, None
 
+    # Apply the matcher function
     shift_x, shift_y, metrics, corrmap = func(d_template, s_image, **kwargs)
 
+    # Apply the shift to the center of the ROI object
     dx = d_roi.x - shift_x
     dy = d_roi.y - shift_y
 
@@ -417,13 +615,34 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(51, 51), reduction=11, c
            break
     return dx, dy, metrics
 
+def estimate_affine_transformation(destination_coordinates, source_coordinates):
+    """
+    Given a set of destination control points compute the affine transformation
+    required to project the source control points into the destination.
 
-def geom_match(base_cube,
-               input_cube,
+    Parameters
+    ----------
+    destination_coordinates : array-like
+                              An n,2 data structure containing the destination control points
+
+    source_coordinates : array-like
+                         An n,2 data structure containing the source control points
+
+    Returns
+    -------
+     : object
+       An skimage affine transform object
+    """
+    destination_coordinates = np.asarray(destination_coordinates)
+    source_coordinates = np.asarray(source_coordinates)
+
+    return tf.estimate_transform('affine', destination_coordinates, source_coordinates)
+
+
+def geom_match(destination_cube,
+               source_cube,
                bcenter_x,
                bcenter_y,
-               size_x=60,
-               size_y=60,
                template_kwargs={"image_size":(59,59), "template_size":(31,31)},
                phase_kwargs=None,
                verbose=True):
@@ -436,11 +655,11 @@ def geom_match(base_cube,
 
     Parameters
     ----------
-    base_cube:  plio.io.io_gdal.GeoDataset
-                source image
+    destination_cube:  plio.io.io_gdal.GeoDataset
+                       The image to be matched to
 
-    input_cube: plio.io.io_gdal.GeoDataset
-                destination image; gets matched to the source image
+    source_cube: plio.io.io_gdal.GeoDataset
+                 The image that is transformed and matched into the destination_cube
 
     bcenter_x:  int
                 sample location of source measure in base_cube
@@ -465,7 +684,6 @@ def geom_match(base_cube,
                 the source subimage and projected destination subimage, the second subplot contains the registered
                 measure's location in the base subimage and the unprojected destination subimage with the corresponding
                 template metric correlation map.
-
 
     Returns
     -------
@@ -495,180 +713,81 @@ def geom_match(base_cube,
 
     """
 
-    if not isinstance(input_cube, GeoDataset):
-        raise Exception("input cube must be a geodataset obj")
+    if not isinstance(source_cube, GeoDataset):
+        raise Exception("source cube must be a geodataset obj")
 
-    if not isinstance(base_cube, GeoDataset):
-        raise Exception("match cube must be a geodataset obj")
+    if not isinstance(destination_cube, GeoDataset):
+        raise Exception("destination cube must be a geodataset obj")
 
-    base_startx = int(bcenter_x - size_x)
-    base_starty = int(bcenter_y - size_y)
-    base_stopx = int(bcenter_x + size_x)
-    base_stopy = int(bcenter_y + size_y)
+    destination_size_x = template_kwargs['image_size'][0]
+    destination_size_y = template_kwargs['image_size'][1]
 
-    image_size = input_cube.raster_size
-    match_size = base_cube.raster_size
+    destination_startx = int(bcenter_x - destination_size_x)
+    destination_starty = int(bcenter_y - destination_size_y)
+    destination_stopx = int(bcenter_x + destination_size_x)
+    destination_stopy = int(bcenter_y + destination_size_y)
+
+    image_size = source_cube.raster_size
+    match_size = destination_cube.raster_size
 
     # for now, require the entire window resides inside both cubes.
-    if base_stopx > match_size[0]:
-        raise Exception(f"Window: {base_stopx} > {match_size[0]}, center: {bcenter_x},{bcenter_y}")
-    if base_startx < 0:
-        raise Exception(f"Window: {base_startx} < 0, center: {bcenter_x},{bcenter_y}")
-    if base_stopy > match_size[1]:
-        raise Exception(f"Window: {base_stopy} > {match_size[1]}, center: {bcenter_x},{bcenter_y} ")
-    if base_starty < 0:
-        raise Exception(f"Window: {base_starty} < 0, center: {bcenter_x},{bcenter_y}")
+    if destination_stopx > match_size[0]:
+        raise Exception(f"Window: {destination_stopx} > {match_size[0]}, center: {bcenter_x},{bcenter_y}")
+    if destination_startx < 0:
+        raise Exception(f"Window: {destination_startx} < 0, center: {bcenter_x},{bcenter_y}")
+    if destination_stopy > match_size[1]:
+        raise Exception(f"Window: {destination_stopy} > {match_size[1]}, center: {bcenter_x},{bcenter_y} ")
+    if destination_starty < 0:
+        raise Exception(f"Window: {destination_starty} < 0, center: {bcenter_x},{bcenter_y}")
+
+    destination_corners = [(destination_startx,destination_starty),
+                    (destination_startx,destination_stopy),
+                    (destination_stopx,destination_stopy),
+                    (destination_stopx,destination_starty)]
 
     # specifically not putting this in a try/except, this should never fail
     # 07/28 - putting it in a try/except because of how we ground points
+    # Transform from the destination center to the source_cube center
     try:
-        mlat, mlon = spatial.isis.image_to_ground(base_cube.file_name, bcenter_x, bcenter_y)
-        center_x, center_y = spatial.isis.ground_to_image(input_cube.file_name, mlon, mlat)
+        mlat, mlon = spatial.isis.image_to_ground(destination_cube.file_name, bcenter_x, bcenter_y)
+        center_y, center_x = spatial.isis.ground_to_image(source_cube.file_name, mlon, mlat)
     except ProcessError as e:
             if 'Requested position does not project in camera model' in e.stderr:
-                print(f'Skip geom_match; Region of interest center located at ({mlon}, {mlat}) does not project to image {input_cube.base_name}')
+                print(f'Skip geom_match; Region of interest center located at ({mlon}, {mlat}) does not project to image {source_cube.base_name}')
                 print('This should only appear when propagating ground points')
                 return None, None, None, None, None
 
-
-    base_corners = [(base_startx,base_starty),
-                    (base_startx,base_stopy),
-                    (base_stopx,base_stopy),
-                    (base_stopx,base_starty)]
-
-    dst_corners = []
-    for x,y in base_corners:
+    # Compute the mapping between the destination corners and the source_cube corners in
+    # order to estimate an affine transformation
+    source_corners = []
+    for x,y in destination_corners:
         try:
-            lat, lon = spatial.isis.image_to_ground(base_cube.file_name, x, y)
-            dst_corners.append(spatial.isis.ground_to_image(input_cube.file_name, lon, lat)[::-1])
+            lat, lon = spatial.isis.image_to_ground(destination_cube.file_name, x, y)
+            source_corners.append(spatial.isis.ground_to_image(source_cube.file_name, lon, lat)[::-1])
         except ProcessError as e:
             if 'Requested position does not project in camera model' in e.stderr:
-                print(f'Skip geom_match; Region of interest corner located at ({lon}, {lat}) does not project to image {input_cube.base_name}')
+                print(f'Skip geom_match; Region of interest corner located at ({lon}, {lat}) does not project to image {source_cube.base_name}')
                 return None, None, None, None, None
 
-    base_gcps = np.array([*base_corners])
-    base_gcps[:,0] -= base_startx
-    base_gcps[:,1] -= base_starty
 
-    dst_gcps = np.array([*dst_corners])
-    start_x = dst_gcps[:,0].min()
-    start_y = dst_gcps[:,1].min()
-    stop_x = dst_gcps[:,0].max()
-    stop_y = dst_gcps[:,1].max()
-    dst_gcps[:,0] -= start_x
-    dst_gcps[:,1] -= start_y
+    # Estimate the transformation
+    affine = estimate_affine_transformation(destination_corners, source_corners)
 
-    affine = tf.estimate_transform('affine', np.array([*base_gcps]), np.array([*dst_gcps]))
+    # Apply the subpixel matcher with an affine transformation
+    restemplate = subpixel_transformed_template(bcenter_x, bcenter_y, 
+                                                center_x, center_y, 
+                                                destination_cube, source_cube, 
+                                                affine,
+                                                verbose=verbose,
+                                                **template_kwargs)
 
-    # read_array not getting correct type by default
-    isis2np_types = {
-            "UnsignedByte" : "uint8",
-            "SignedWord" : "int16",
-            "Real" : "float64"
-    }
+    x, y, metric, temp_corrmap = restemplate
+    
+    if x is None or y is None:
+        return None, None, None, None, None
 
-    base_pixels = list(map(int, [base_corners[0][0], base_corners[0][1], size_x*2, size_y*2]))
-    base_type = isis2np_types[pvl.load(base_cube.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
-    base_arr = base_cube.read_array(pixels=base_pixels, dtype=base_type)
-
-    dst_pixels = list(map(int, [start_x, start_y, stop_x-start_x, stop_y-start_y]))
-    dst_type = isis2np_types[pvl.load(input_cube.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
-    dst_arr = input_cube.read_array(pixels=dst_pixels, dtype=dst_type)
-
-    dst_arr = tf.warp(dst_arr, affine)
-    dst_arr = dst_arr[:size_y*2, :size_x*2]
-
-    # Run through one step of template matching then one step of phase matching
-    restemplate = subpixel_template(size_x, size_y, size_x, size_y, bytescale(base_arr), bytescale(dst_arr), **template_kwargs)
-
-    if phase_kwargs:
-        _,_,maxcorr, temp_corrmap = restemplate
-        sample_template, line_template = affine([restemplate[0], restemplate[1]])[0]
-        sample_template += start_x
-        line_template += start_y
-        dist_temp = np.linalg.norm([center_x-sample_template, center_y-line_template])
-
-        resphase = subpixel_phase(size_x, size_y, restemplate[0], restemplate[1], base_arr, dst_arr, **phase_kwargs)
-        x,y,(perror, pdiff) = resphase
-        if x is None or y is None:
-            return None, None, None, None, None
-        sample, line = affine([x, y])[0]
-        sample += start_x
-        line += start_y
-        phase_dist = np.linalg.norm([sample_template-sample, line_template-line])
-
-        dist = (dist_temp, dist_phase)
-        metric = (maxcorr, perror, pdiff)
-    else:
-        x,y,maxcorr,temp_corrmap = restemplate
-        if x is None or y is None:
-            return None, None, None, None, None
-        if verbose:
-            image_size = template_kwargs['image_size']
-            template_size = template_kwargs['template_size']
-            image_size = check_image_size(image_size)
-            template_size = check_image_size(template_size)
-            image_chip = roi.Roi(bytescale(base_arr), size_x, size_y, size_x=image_size[0], size_y=image_size[1]).clip()
-            temp_chip = roi.Roi(bytescale(dst_arr), size_x, size_y, size_x=template_size[0], size_y=template_size[1]).clip()
-            fig, axs = plt.subplots(1, 3, figsize=(15,15))
-            axs[0].set_title("Image Chip")
-            axs[0].imshow(bytescale(image_chip), cmap="Greys_r")
-            axs[1].set_title("Template Chip")
-            axs[1].imshow(bytescale(temp_chip), cmap="Greys_r")
-            pcm = axs[2].imshow(temp_corrmap**2, interpolation=None, cmap="coolwarm")
-            plt.show()
-
-            fig, axs = plt.subplots(1, 3, figsize=(15,15))
-            axs[0].set_title("Base")
-            axs[0].imshow(bytescale(base_arr), cmap="Greys_r")
-            axs[0].scatter(size_x, size_y, s=10, color='red')
-            axs[0].plot([0, size_x*2], [size_y, size_y], linewidth=0.75, color='red')
-            axs[0].plot([size_x, size_x], [0, size_y*2], linewidth=0.75, color='red')
-            axs[0].set_xlim([0, base_arr.shape[0]])
-            axs[0].set_ylim([0, base_arr.shape[1]])
-            axs[1].set_title("Projected Image\n w/ original point")
-            axs[1].imshow(bytescale(dst_arr[2:]), cmap="Greys_r")
-            axs[1].scatter(size_x, size_y, s=10, color='red')
-            axs[1].plot([0, size_x*2], [size_y, size_y], linewidth=0.75, color='red')
-            axs[1].plot([size_x, size_x], [0, size_y*2], linewidth=0.75, color='red')
-            axs[1].set_xlim([0, dst_arr[2:].shape[0]])
-            axs[1].set_ylim([0, dst_arr[2:].shape[1]])
-            axs[2].set_title("Projected Image\n w/ registered point")
-            axs[2].imshow(bytescale(dst_arr[2:]), cmap="Greys_r")
-            axs[2].scatter(x, y, s=10, color='red')
-            axs[2].plot([0, size_x*2], [y, y], linewidth=0.75, color='red')
-            axs[2].plot([x, x], [0, size_y*2], linewidth=0.75, color='red')
-            axs[2].set_xlim([0, dst_arr[2:].shape[0]])
-            axs[2].set_ylim([0, dst_arr[2:].shape[1]])
-
-            plt.show()
-
-
-        metric = maxcorr
-        sample, line = affine([x, y])[0]
-        sample += start_x
-        line += start_y
-        dist = np.linalg.norm([center_x-sample, center_y-line])
-
-        if verbose:
-            fig, axs = plt.subplots(1, 2, figsize=(10,5))
-            # clip the image around the new line, sample
-            new_size_x = round(size_x*100/6) # 100/6 is a scaling between tehmis and CTX resolution
-            new_size_y = round(size_y*100/6)
-            new_dst_arr = roi.Roi(input_cube, sample, line, size_x=new_size_x, size_y=new_size_y).clip()
-            axs[0].imshow(new_dst_arr, cmap='Greys_r');
-            axs[0].scatter(new_size_x, new_size_y, s=10, color='red');
-            axs[0].set_title("Absolute\n Unprojected Image \nw/ registered point");
-
-            dst_arr_org = input_cube.read_array(pixels=dst_pixels, dtype=dst_type)
-            ssample, lline = affine([x, y])[0]
-            axs[1].imshow(dst_arr_org, cmap="Greys_r")
-            axs[1].scatter(ssample, lline, s=10, color='blue')
-            axs[1].set_title("Relative\n Unprojected Image\nw/registered point")
-            plt.show()
-
-
-    return sample, line, dist, metric, temp_corrmap
+    dist = np.linalg.norm([center_x-x, center_y-y])
+    return x, y, dist, metric, temp_corrmap
 
 
 def subpixel_register_measure(measureid,
@@ -706,8 +825,6 @@ def subpixel_register_measure(measureid,
                 measures with a cost <= the threshold are marked as ignore=True in
                 the database.
     """
-
-
 
     if isinstance(measureid, Measures):
         measureid = measureid.id
@@ -784,7 +901,6 @@ def subpixel_register_measure(measureid,
 def subpixel_register_point(pointid,
                             iterative_phase_kwargs={},
                             subpixel_template_kwargs={},
-                            size_x=100, size_y=100,
                             cost_func=lambda x,y: 1/x**2 * y,
                             threshold=0.005,
                             ncg=None,
@@ -859,7 +975,7 @@ def subpixel_register_point(pointid,
                                                         source.sample, source.line,
                                                         template_kwargs=subpixel_template_kwargs,
                                                         phase_kwargs=iterative_phase_kwargs,
-                                                        size_x=size_y, size_y=size_x)
+                                                        size_x=100, size_y=100)
             except Exception as e:
                 print(f'geom_match failed on measure {measure.id} with exception -> {e}')
                 measure.ignore = True
