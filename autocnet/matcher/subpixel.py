@@ -1,6 +1,7 @@
 import json
 from math import modf, floor
 import numpy as np
+import warnings
 
 from skimage.feature import register_translation
 from skimage import transform as tf
@@ -312,6 +313,9 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
     d_roi = roi.Roi(d_img, dx, dy, size_x=template_size_x, size_y=template_size_y)
 
+    if not s_roi.is_valid or not d_roi.is_valid:
+        return [None] * 4
+
     try:
         s_image_dtype = isis2np_types[pvl.load(s_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
     except:
@@ -359,6 +363,12 @@ def subpixel_transformed_template(sx, sy, dx, dy,
 
     # Apply the matcher on the transformed array
     shift_x, shift_y, metrics, corrmap = func(bytescale(buffered_template), s_image, **kwargs)
+
+    # Hard check here to see if we are on the absolute edge of the template
+    max_coord = np.unravel_index(corrmap.argmax(), corrmap.shape)
+    if 0 in max_coord or corrmap.shape[0]-1 == max_coord[0] or corrmap.shape[1]-1 == max_coord[1]:
+        warnings.warn('Maximum correlation is at the edge of the template. Results are ambiguous.', UserWarning)
+        return [None] * 4
 
     if verbose:
         axs[2].imshow(transformed_roi, cmap='Greys')
@@ -462,6 +472,9 @@ def subpixel_template(sx, sy, dx, dy,
     s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
     d_roi = roi.Roi(d_img, dx, dy, size_x=template_size_x, size_y=template_size_y)
 
+    if not s_roi.is_valid or not d_roi.is_valid:
+        return [None] * 4
+        
     try:
         s_image_dtype = isis2np_types[pvl.load(s_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
     except:
@@ -475,18 +488,24 @@ def subpixel_template(sx, sy, dx, dy,
     s_image = bytescale(s_roi.clip(dtype=s_image_dtype))
     d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
     
+    if (s_image is None) or (d_template is None):
+        return None, None, None, None
+
+    # Apply the matcher function
+    shift_x, shift_y, metrics, corrmap = func(d_template, s_image, **kwargs)
+
     if verbose:
         fig, axs = plt.subplots(1, 3, figsize=(20,10))
         axs[0].imshow(s_image, cmap='Greys')
         axs[1].imshow(d_template, cmap='Greys')
         axs[3].imshow(corrmap)
         plt.show()
-    
-    if (s_image is None) or (d_template is None):
-        return None, None, None, None
 
-    # Apply the matcher function
-    shift_x, shift_y, metrics, corrmap = func(d_template, s_image, **kwargs)
+    # Hard check here to see if we are on the absolute edge of the template
+    max_coord = np.unravel_index(corrmap.argmax(), corrmap.shape)
+    if 0 in max_coord or corrmap.shape[0]-1 == max_coord[0] or corrmap.shape[1]-1 == max_coord[1]:
+        warnings.warn('Maximum correlation is at the edge of the template. Results are ambiguous.', UserWarning)
+        return [None] * 4
 
     # Apply the shift to the center of the ROI object
     dx = d_roi.x - shift_x
@@ -781,13 +800,13 @@ def geom_match(destination_cube,
                                                 verbose=verbose,
                                                 **template_kwargs)
 
-    x, y, metric, temp_corrmap = restemplate
+    x, y, metric, corrmap = restemplate
     
     if x is None or y is None:
         return None, None, None, None, None
 
     dist = np.linalg.norm([center_x-x, center_y-y])
-    return x, y, dist, metric, temp_corrmap
+    return x, y, dist, metric, corrmap
 
 
 def subpixel_register_measure(measureid,
@@ -971,11 +990,11 @@ def subpixel_register_point(pointid,
 
             print('geom_match image:', res.path)
             try:
-                new_x, new_y, dist, metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
-                                                        source.sample, source.line,
-                                                        template_kwargs=subpixel_template_kwargs,
-                                                        phase_kwargs=iterative_phase_kwargs,
-                                                        size_x=100, size_y=100)
+                new_x, new_y, dist, metric, corrmap = geom_match(source_node.geodata, destination_node.geodata,
+                                                                 source.sample, source.line,
+                                                                 template_kwargs=subpixel_template_kwargs,
+                                                                 phase_kwargs=iterative_phase_kwargs,
+                                                                 size_x=100, size_y=100)
             except Exception as e:
                 print(f'geom_match failed on measure {measure.id} with exception -> {e}')
                 measure.ignore = True
@@ -1001,6 +1020,7 @@ def subpixel_register_point(pointid,
 
             cost = cost_func(measure.template_shift, measure.template_metric)
 
+            # Check to see if the cost function requirement has been met
             if cost <= threshold:
                 measure.ignore = True # Threshold criteria not met
                 currentlog['status'] = f'Cost failed. Distance shifted: {measure.template_shift}. Metric: {measure.template_metric}.'
