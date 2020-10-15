@@ -966,7 +966,7 @@ class NetworkEdge(Edge):
                              destination=self.destination['node_id'],
                              ring=ring)
                 session.add(edge)
-            
+
     @property
     def intersection(self):
         if not hasattr(self, '_intersection'):
@@ -1002,10 +1002,12 @@ class NetworkEdge(Edge):
         mask = [i for i in range(len(points)) if self.intersection.contains(points[i])]
         return mask
 
-    @property
-    def measures(self):
+    def measures(self, filters={}):
         with self.parent.session_scope() as session:
-            res = session.query(Measures).filter(sqlalchemy.or_(Measures.imageid == self.source['node_id'], Measures.imageid == self.destination['node_id'])).all()
+            query = session.query(Measures).filter(sqlalchemy.or_(Measures.imageid == self.source['node_id'], Measures.imageid == self.destination['node_id']))
+            for attr, value in filters.items():
+                query = query.filter(getattr(Measures,attr)==value)
+            res = query.all()
             session.expunge_all()
         return res
 
@@ -1057,7 +1059,7 @@ class NetworkEdge(Edge):
                        'source_idx', 'destination', 'destination_idx',
                        'lat', 'lon', 'geom',
                        'source_x', 'source_y', 'source_apriori_x', 'source_apriori_y',
-                       'destination_x','destination_y', 'destination_apriori_x', 'destination_apriori_y', 
+                       'destination_x','destination_y', 'destination_apriori_x', 'destination_apriori_y',
                        'shift_x', 'shift_y', 'original_destination_x',
                        'original_destination_y']
 
@@ -1113,3 +1115,119 @@ class NetworkEdge(Edge):
                 bad[o.source_measure_id] = 1
                 bad[o.destin_measure_id] = 1
         return Counter(bad)
+
+    def find_IQR_outliers(self,
+                          scaling=1.5,
+                          filters={'template_metric': 1, 'template_shift': 0},
+                          n_tolerance=10):
+        """
+        Based on the interquartile range, find the measure outliers from line and sample shifts.
+
+        Parameters
+        ----------
+        scaling: float
+                 scaling factor to use on IQR when determining outlier range
+
+        filters: dict
+                 filters used on a match's source measure, only source measures which
+                 satisfy filter will be used in outlier calculation
+
+        n_tolerance: int
+                     minimum number of measures needed to calculate outliers
+
+        Returns
+        -------
+        measure_ids: list
+                     list of measure ids corresponding to outliers
+
+        resultlog:  dict
+                    status of finding outlier
+        """
+        resultlog = []
+        currentlog = {'edge': f'({self.source}, {self.destination})',
+                      'status': ''}
+
+        ref_measures = self.measures(filters=filters)
+        ref_measure_ids = [m.id for m in ref_measures]
+
+        # use matches where the source measure is the reference measure
+        matches = self.matches
+        new_match_idx = []
+        for i, row in matches.iterrows():
+            if (row['source_measure_id'] in ref_measure_ids):
+                new_match_idx.append(i)
+        matches = matches.loc[new_match_idx]
+
+        # check these is enough data to stastically calculate outliers
+        if len(new_match_idx) == 0:
+            currentlog['status'] = 'no filtered measures in edge.'
+            resultlog.append(currentlog)
+            return None, resultlog
+        elif len(new_match_idx) < n_tolerance:
+            currentlog['status'] = f'{len(new_match_idx)} < {n_tolerance} filtered measures are not statistically signigicant.'
+            resultlog.append(currentlog)
+            return None, resultlog
+
+        # calculate outliers
+        sampleShift = matches['destination_x'] - matches['destination_apriori_x']
+        lineShift =  matches['destination_y'] - matches['destination_apriori_y']
+
+        sample_q1, sample_q3 = np.percentile(sampleShift,[25,75])
+        line_q1, line_q3 = np.percentile(lineShift,[25,75])
+        sample_iqr = sample_q3 - sample_q1
+        line_iqr = line_q3 - line_q1
+
+        sample_lowerBound = sample_q1 -(scaling * sample_iqr)
+        sample_upperBound = sample_q3 +(scaling * sample_iqr)
+        line_lowerBound = line_q1 -(scaling * line_iqr)
+        line_upperBound = line_q3 +(scaling * line_iqr)
+
+        sample_outlier_matches = sampleShift[(sampleShift <= sample_lowerBound) | (sampleShift >= sample_upperBound)]
+        line_outlier_matches = lineShift[(lineShift <= line_lowerBound) | (lineShift >= line_upperBound)]
+        outlier_match_idx = np.concatenate((sample_outlier_matches.index.values, line_outlier_matches.index.values))
+
+        measure_ids = matches.loc[outlier_match_idx]['destin_measure_id'].values
+        currentlog['status'] = f'{len(measure_ids)} outliers found.'
+        resultlog.append(currentlog)
+
+        return measure_ids, resultlog
+
+
+    def ignore_outliers(self, outlier_method='IQR', **kwargs):
+        """
+        Find and ignore outlier measures as determined by outlier method
+
+
+        Parameters
+        ----------
+        outlier_method: str
+                        method used to determine outliers.
+                        Current methods:
+                           - interquartile range ('IQR') of line/sample shift
+
+        Returns
+        -------
+        resultlog: dict
+                   status of finding and ignoring outliers
+
+
+        """
+        outlier_dict = {'IQR': self.find_IQR_outliers}
+        outlier_func = outlier_dict[outlier_method]
+
+        outlier_destination_mids, resultlog = outlier_func(**kwargs)
+
+        if outlier_destination_mids is None:
+            return resultlog
+
+        # ignore outlier measures
+        with self.parent.session_scope() as session:
+            for m in outlier_destination_mids:
+                currentlog = {'measure id': m,
+                              'status': 'Ignored'}
+                session.query(Measures).filter(Measures.id==m).update({'ignore': True})
+                resultlog.append(currentlog)
+
+        return resultlog
+
+

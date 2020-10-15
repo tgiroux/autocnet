@@ -303,10 +303,10 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     --------
     autocnet.matcher.naive_template.pattern_match : for the kwargs that can be passed to the matcher
     autocnet.matcher.naive_template.pattern_match_autoreg : for the jwargs that can be passed to the autoreg style matcher
-    """                           
+    """
     image_size = check_image_size(image_size)
     template_size = check_image_size(template_size)
-    
+
     template_size_x = template_size[0] * transform.scale[0]
     template_size_y = template_size[1] * transform.scale[1]
 
@@ -320,7 +320,7 @@ def subpixel_transformed_template(sx, sy, dx, dy,
         s_image_dtype = isis2np_types[pvl.load(s_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
     except:
         s_image_dtype = None
-    
+
     try:
         d_template_dtype = isis2np_types[pvl.load(d_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
     except:
@@ -339,7 +339,7 @@ def subpixel_transformed_template(sx, sy, dx, dy,
 
     # Build the transformation chance
     shift_x, shift_y = d_roi.center
-    
+
     tf_rotate = tf.AffineTransform(rotation=transform.rotation, shear=transform.shear)
     tf_shift = tf.SimilarityTransform(translation=[-shift_x, -shift_y])
     tf_shift_inv = tf.SimilarityTransform(translation=[shift_x, shift_y])
@@ -357,7 +357,7 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     scale_y, scale_x = transform.scale
     template_shape_y, template_shape_x = d_template.shape
     scaled_roi = tf.resize(transformed_roi, (int(template_shape_x/scale_x), int(template_shape_y/scale_x)))
-    
+
     # Clip the transformed template to avoid no data around around the edges
     buffered_template = scaled_roi[template_buffer:-template_buffer,template_buffer:-template_buffer]
 
@@ -365,7 +365,7 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     shift_x, shift_y, metrics, corrmap = func(bytescale(buffered_template), s_image, **kwargs)
 
     # Hard check here to see if we are on the absolute edge of the template
-    max_coord = np.unravel_index(corrmap.argmax(), corrmap.shape)
+    max_coord = np.unravel_index(corrmap.argmax(), corrmap.shape)[::-1]
     if 0 in max_coord or corrmap.shape[0]-1 == max_coord[0] or corrmap.shape[1]-1 == max_coord[1]:
         warnings.warn('Maximum correlation is at the edge of the template. Results are ambiguous.', UserWarning)
         return [None] * 4
@@ -437,7 +437,7 @@ def subpixel_template(sx, sy, dx, dy,
     template_size : tuple
                     (xsize, ysize) of the template to iterate over the image in order
                     to identify the area(s) of highest correlation.
-    
+
     func : callable
            The function used to pattern match
 
@@ -474,12 +474,12 @@ def subpixel_template(sx, sy, dx, dy,
 
     if not s_roi.is_valid or not d_roi.is_valid:
         return [None] * 4
-        
+
     try:
         s_image_dtype = isis2np_types[pvl.load(s_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
     except:
         s_image_dtype = None
-    
+
     try:
         d_template_dtype = isis2np_types[pvl.load(d_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
     except:
@@ -487,7 +487,7 @@ def subpixel_template(sx, sy, dx, dy,
 
     s_image = bytescale(s_roi.clip(dtype=s_image_dtype))
     d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
-    
+
     if (s_image is None) or (d_template is None):
         return None, None, None, None
 
@@ -502,7 +502,7 @@ def subpixel_template(sx, sy, dx, dy,
         plt.show()
 
     # Hard check here to see if we are on the absolute edge of the template
-    max_coord = np.unravel_index(corrmap.argmax(), corrmap.shape)
+    max_coord = np.unravel_index(corrmap.argmax(), corrmap.shape)[::-1]
     if 0 in max_coord or corrmap.shape[0]-1 == max_coord[0] or corrmap.shape[1]-1 == max_coord[1]:
         warnings.warn('Maximum correlation is at the edge of the template. Results are ambiguous.', UserWarning)
         return [None] * 4
@@ -663,7 +663,6 @@ def geom_match(destination_cube,
                bcenter_x,
                bcenter_y,
                template_kwargs={"image_size":(59,59), "template_size":(31,31)},
-               phase_kwargs=None,
                verbose=True):
     """
     Propagates a source measure into destination images and then perfroms subpixel registration.
@@ -694,9 +693,6 @@ def geom_match(destination_cube,
 
     template_kwargs: dict
                      contains keywords necessary for autocnet.matcher.subpixel.subpixel_template
-
-    phase_kwargs:    dict
-                     contains kwargs for autocnet.matcher.subpixel.subpixel_phase
 
     verbose:    boolean
                 indicates level of print out desired. If True, two subplots are output; the first subplot contains
@@ -793,15 +789,15 @@ def geom_match(destination_cube,
     affine = estimate_affine_transformation(destination_corners, source_corners)
 
     # Apply the subpixel matcher with an affine transformation
-    restemplate = subpixel_transformed_template(bcenter_x, bcenter_y, 
-                                                center_x, center_y, 
-                                                destination_cube, source_cube, 
+    restemplate = subpixel_transformed_template(bcenter_x, bcenter_y,
+                                                center_x, center_y,
+                                                destination_cube, source_cube,
                                                 affine,
                                                 verbose=verbose,
                                                 **template_kwargs)
 
     x, y, metric, corrmap = restemplate
-    
+
     if x is None or y is None:
         return None, None, None, None, None
 
@@ -810,8 +806,8 @@ def geom_match(destination_cube,
 
 
 def subpixel_register_measure(measureid,
-                              iterative_phase_kwargs={},
                               subpixel_template_kwargs={},
+                              size_x=100, size_y=100,
                               cost_func=lambda x,y: 1/x**2 * y,
                               threshold=0.005,
                               ncg=None,
@@ -827,9 +823,6 @@ def subpixel_register_measure(measureid,
 
     measureid : int or obj
               The identifier of the measure in the DB or a Measures object
-
-    iterative_phase_kwargs : dict
-                             Any keyword arguments passed to the phase matcher
 
     subpixel_template_kwargs : dict
                                Any keyword arguments passed to the template matcher
@@ -857,68 +850,75 @@ def subpixel_register_measure(measureid,
     with ncg.session_scope() as session:
         # Setup the measure that is going to be matched
         destination = session.query(Measures).filter(Measures.id == measureid).one()
-        destinationid = destination.imageid
-        res = session.query(Images).filter(Images.id == destinationid).one()
-        destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
+        destinationimageid = destination.imageid
+        destinationimage = session.query(Images).filter(Images.id == destinationimageid).one()
+        destination_node = NetworkNode(node_id=destinationimageid, image_path=destinationimage.path)
 
         # Get the point id and set up the reference measure
         pointid = destination.pointid
         source = session.query(Measures).filter(Measures.pointid==pointid).order_by(Measures.id).first()
+        source.template_metric = 1
+        source.template_shift = 0
+        source.phase_error = 0
+        source.phase_diff = 0
+        source.phase_shift = 0
         source.weight = 1
 
         sourceid = source.imageid
-        res = session.query(Images).filter(Images.id == sourceid).one()
-        source_node = NetworkNode(node_id=sourceid, image_path=res.path)
+        sourceimage = session.query(Images).filter(Images.id == sourceid).one()
+        source_node = NetworkNode(node_id=sourceid, image_path=sourceimage.path)
 
-        new_template_x, new_template_y, template_metric, _ = subpixel_template(source.sample,
-                                                                source.line,
-                                                                destination.sample,
-                                                                destination.line,
-                                                                source_node.geodata,
-                                                                destination_node.geodata,
-                                                                **subpixel_template_kwargs)
-        if new_template_x == None:
-            destination.ignore = True # Unable to template match
-            result['status'] = 'Unable to template match.'
-            return result
+        resultlog = []
+        print(f'Attempting to subpixel register measure {measureid}: ({pointid}, {destinationimage.name})')
+        currentlog = {'measureid': measureid,
+                      'status': ''}
 
-        new_phase_x, new_phase_y, phase_metrics = iterative_phase(source.sample,
-                                                                    source.line,
-                                                                    new_template_x,
-                                                                    new_template_y,
-                                                                    source_node.geodata,
-                                                                    destination_node.geodata,
-                                                                    **iterative_phase_kwargs)
-        if new_phase_x == None:
-            destination.ignore = True # Unable to phase match
-            result['status'] = 'Unable to phase match.'
-            return result
+        try:
+            new_x, new_y, dist, metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
+                                                        source.sample, source.line,
+                                                        template_kwargs=subpixel_template_kwargs)
+        except Exception as e:
+            print(f'geom_match failed on measure {measureid} with exception -> {e}')
+            destination.ignore = True # geom_match failed
+            currentlog['status'] = f"Failed to register measure {measureid}"
+            resultlog.append(currentlog)
+            return resultlog
 
-        dist = np.linalg.norm([new_phase_x-new_template_x, new_phase_y-new_template_y])
-        cost = cost_func(dist, template_metric)
+        if new_x == None or new_y == None:
+            destination.ignore = True # Unable to geom match
+            currentlog['status'] = 'Failed to geom match.'
+            resultlog.append(currentlog)
+            return resultlog
+
+        destination.template_metric = metric
+        destination.template_shift = dist
+
+        cost = cost_func(destination.template_shift, destination.template_metric)
 
         if cost <= threshold:
             destination.ignore = True # Threshold criteria not met
-            result['status'] = 'Cost metric not met.'
-            return result
+            currentlog['status'] = f'Cost failed. Distance shifted: {destination.template_shift}. Metric: {destination.template_metric}.'
+            resultlog.append(currentlog)
+            return resultlog
 
         # Update the measure
-        if new_phase_x:
-            destination.sample = new_phase_x
-            destination.line = new_phase_y
-            destination.weight = cost
+        destination.sample = new_x
+        destination.line = new_y
+        destination.weight = cost
+        destination.choosername = 'subpixel_register_measure'
 
         # In case this is a second run, set the ignore to False if this
         # measures passed. Also, set the source measure back to ignore=False
         destination.ignore = False
         source.ignore = False
-        result['status'] = 'Success.'
+        currentlog['status'] = f'Success.'
+        resultlog.append(currentlog)
 
-    return result
+
+    return resultlog
 
 
 def subpixel_register_point(pointid,
-                            iterative_phase_kwargs={},
                             subpixel_template_kwargs={},
                             cost_func=lambda x,y: 1/x**2 * y,
                             threshold=0.005,
@@ -933,9 +933,6 @@ def subpixel_register_point(pointid,
     ----------
     pointid : int or obj
               The identifier of the point in the DB or a Points object
-
-    iterative_phase_kwargs : dict
-                             Any keyword arguments passed to the phase matcher
 
     subpixel_template_kwargs : dict
                                Ay keyword arguments passed to the template matcher
@@ -990,41 +987,44 @@ def subpixel_register_point(pointid,
 
             print('geom_match image:', res.path)
             try:
-                new_x, new_y, dist, metric, corrmap = geom_match(source_node.geodata, destination_node.geodata,
-                                                                 source.sample, source.line,
-                                                                 template_kwargs=subpixel_template_kwargs,
-                                                                 phase_kwargs=iterative_phase_kwargs,
-                                                                 size_x=100, size_y=100)
+                new_x, new_y, dist, metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
+                                                        source.apriorisample, source.aprioriline,
+                                                        template_kwargs=subpixel_template_kwargs)
             except Exception as e:
                 print(f'geom_match failed on measure {measure.id} with exception -> {e}')
-                measure.ignore = True
-                currentlog['status'] = f"Failed to register measure {measure.id}"
+                currentlog['status'] = f"geom_match failed on measure {measure.id}"
                 resultlog.append(currentlog)
+                if measure.weight is None:
+                    measure.ignore = True # Geom match failed and no previous sucesses
                 continue
 
             if new_x == None or new_y == None:
-                measure.ignore = True # Unable to geom match
-                currentlog['status'] = 'Failed to geom match.'
+                currentlog['status'] = f'Failed to register measure {measure.id}.'
                 resultlog.append(currentlog)
+                if measure.weight is None:
+                    measure.ignore = True # Unable to geom match and no previous sucesses
                 continue
 
-            if iterative_phase_kwargs:
-                measure.template_metric = metric[0]
-                measure.template_shift = dist[0]
-                measure.phase_error = metric[1]
-                measure.phase_diff = metric[2]
-                measure.phase_shift = dist[1]
-            else:
-                measure.template_metric = metric
-                measure.template_shift = dist
+            measure.template_metric = metric
+            measure.template_shift = dist
 
             cost = cost_func(measure.template_shift, measure.template_metric)
 
             # Check to see if the cost function requirement has been met
-            if cost <= threshold:
-                measure.ignore = True # Threshold criteria not met
-                currentlog['status'] = f'Cost failed. Distance shifted: {measure.template_shift}. Metric: {measure.template_metric}.'
+            if measure.weight and cost < measure.weight:
+                currentlog['status'] = f'Previous match provided better correlation. {measure.weight} > {cost}.'
                 resultlog.append(currentlog)
+                continue
+            if measure.weight and cost == measure.weight:
+                currentlog['status'] = f'WTF old and new cost are equal for measure {measure.id}. {measure.weight} = {cost}.'
+                resultlog.append(currentlog)
+                continue
+
+            if cost <= threshold:
+                currentlog['status'] = f'Cost failed. Distance calculated: {measure.template_shift}. Metric calculated: {measure.template_metric}.'
+                resultlog.append(currentlog)
+                if measure.weight is None:
+                    measure.ignore = True # Threshold criteria not met and no previous sucesses
                 continue
 
             # Update the measure
@@ -1037,13 +1037,12 @@ def subpixel_register_point(pointid,
             # measures passed. Also, set the source measure back to ignore=False
             measure.ignore = False
             source.ignore = False
-            currentlog['status'] = f'Success.'
+            currentlog['status'] = f'Success. Distance shifted: {measure.template_shift}. Metric: {measure.template_metric}.'
             resultlog.append(currentlog)
 
     return resultlog
 
-def subpixel_register_points(iterative_phase_kwargs={'size': 251},
-                             subpixel_template_kwargs={'image_size':(251,251)},
+def subpixel_register_points(subpixel_template_kwargs={'image_size':(251,251)},
                              cost_kwargs={},
                              threshold=0.005,
                              Session=None):
@@ -1057,9 +1056,6 @@ def subpixel_register_points(iterative_phase_kwargs={'size': 251},
 
     pointid : int
               The identifier of the point in the DB
-
-    iterative_phase_kwargs : dict
-                             Any keyword arguments passed to the phase matcher
 
     subpixel_template_kwargs : dict
                                Ay keyword arguments passed to the template matcher
@@ -1081,7 +1077,6 @@ def subpixel_register_points(iterative_phase_kwargs={'size': 251},
     session.close()
     for pointid in pointids:
         subpixel_register_point(pointid,
-                                iterative_phase_kwargs=iterative_phase_kwargs,
                                 subpixel_template_kwargs=subpixel_template_kwargs,
                                 **cost_kwargs)
 
