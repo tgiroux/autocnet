@@ -17,6 +17,7 @@ import shapely
 
 import geoalchemy2
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
+from sqlalchemy.sql import func
 import shapely.affinity
 import shapely.geometry
 import shapely.wkt as swkt
@@ -2220,6 +2221,85 @@ class NetworkCandidateGraph(CandidateGraph):
         job cancellation or hanging jobs.
         """
         self.redis_queue.flushdb()
+
+    def empty_overlays(self, filters={'ignore': False}, size_threshold=0):
+        """
+        Find overlaps that do not contain valid points. By default, valid points
+        include not ignored points, but additional point properties can be used to
+        further define a valid point. For example, to look at not ignored, free
+        (not ground) points; filters = {'ignored': False, 'pointtype': 2}.
+
+        Parameters
+        ----------
+        filters: dict
+                 Points object properties for point filtering.
+
+        size_threshold: float
+                        Minimum area requirment for returned overlaps. Units are
+                        determined by spatial reference system.
+
+        Returns
+        -------
+        overlays: list of Overlay objects
+                  Model information associated with overlaps that contain no valid points
+
+        See Also
+        --------
+        autocnet.io.db.model.Overlay: for description of information associated with Overlay class
+        autocnet.io.db.model.Points: for description of information associated with Points class
+        """
+        with self.session_scope() as session:
+            # Find overlap ids that contain one or more valid points
+            sq = session.query(Overlay.id).join(Points, func.ST_Contains(Overlay.geom, Points.geom))
+            for attr, value in filters.items():
+                sq = sq.filter(getattr(Points, attr)==value)
+            sq = sq.group_by(Overlay.id)
+
+            # find overlap information not satisfying previous query
+            q = session.query(Overlay).filter(Overlay.id.notin_(sq)).filter(func.ST_Area(Overlay.geom)>=size_threshold)
+            overlays = q.all()
+            session.expunge_all()
+            return overlays
+
+
+    def connected_overlays(self, filters={'ignore': False}, size_threshold=0):
+        """
+        Find overlaps that contain valid points. By default, valid points
+        include not ignored points, but additional point properties can be used to
+        further define a valid point. For example, to look at not ignored, free
+        (not ground) points; filters = {'ignored': False, 'pointtype': 2}.
+
+        Parameters
+        ----------
+        filters: dict
+                 Points object properties for point filtering.
+
+        size_threshold: float
+                        Minimum area requirment for returned overlaps. Units are
+                        determined by spatial reference system.
+
+        Returns
+        -------
+        overlays: list of Overlay objects
+                 Model information associated with overlaps that contain one or more valid points
+
+        See Also
+        --------
+        autocnet.io.db.model.Overlay: for description of information associated with Overlay class
+        autocnet.io.db.model.Points: for description of information associated with Points class
+        """
+        with self.session_scope() as session:
+            # Find overlap ids that contain one or more valid points
+            sq = session.query(Overlay.id).join(Points, func.ST_Contains(Overlay.geom, Points.geom))
+            for attr, value in filters.items():
+                sq = sq.filter(getattr(Points, attr)==value)
+            sq = sq.group_by(Overlay.id)
+
+            # find overlap information satisfying previous query
+            q = session.query(Overlay).filter(Overlay.id.in_(sq)).filter(func.ST_Area(Overlay.geom)>=size_threshold)
+            overlays = q.all()
+            session.expunge_all()
+            return overlays
 
     def cluster_propagate_control_network(self,
                                           base_cnet,
