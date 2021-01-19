@@ -338,6 +338,8 @@ def propagate_point(Session,
             'path': row[7],
             'line' : line,
             'sample' : sample,
+            'template_metric' : row[3],
+            'template_shift' : row[4],
             'point' : p,
             'point_ecef' : Point(x, y, z)
             })
@@ -470,6 +472,8 @@ def propagate_control_network(Session,
                                        aprioriline = float(row['line']),
                                        apriorisample = float(row['sample']),
                                        imageid = int(row['imageid']),
+                                       template_metric = float(row['template_metric']),
+                                       template_shift = float(row['template_shift']),
                                        serial = row['serial'],
                                        measuretype=3))
         else:
@@ -485,6 +489,8 @@ def propagate_control_network(Session,
                                            apriorisample = float(row['sample']),
                                            imageid = int(row['imageid']),
                                            serial = row['serial'],
+                                           template_metric = float(row['template_metric']),
+                                           template_shift = float(row['template_shift']),
                                            measuretype=3))
             points.append(p)
 
